@@ -1,5 +1,5 @@
 import type { AnimationIntent, CommandResult, SceneObject } from '@/types';
-import { ollamaGenerate, isOllamaAvailable } from '@/lib/ollama';
+import { isOpenRouterAvailable } from './openrouter';
 
 // ============================================
 // NexEra — LLM Intent Mapping for Avatar Commands
@@ -16,18 +16,20 @@ export async function mapCommandToAnimation(
   command: string,
   sceneObjects: SceneObject[] = []
 ): Promise<CommandResult> {
-  const available = await isOllamaAvailable();
+  let hasOpenRouter = false;
+  try {
+    hasOpenRouter = isOpenRouterAvailable();
+    if (hasOpenRouter) {
+      const { openrouterChat } = await import('./openrouter');
 
-  if (!available) {
-    // Fallback to simple keyword matching if no LLM
-    return keywordFallback(command, sceneObjects);
-  }
+      const sceneDesc = sceneObjects.length > 0
+        ? `Scene objects: ${sceneObjects.map(o => `"${o.label}" at [${o.position.join(',')}]`).join(', ')}`
+        : 'No scene objects defined.';
 
-  const sceneDesc = sceneObjects.length > 0
-    ? `Scene objects: ${sceneObjects.map(o => `"${o.label}" at [${o.position.join(',')}]`).join(', ')}`
-    : 'No scene objects defined.';
-
-  const systemPrompt = `You are an intent classification system for an AI training avatar.
+      const response = await openrouterChat([
+        {
+          role: 'system',
+          content: `You are an intent classification system for an AI training avatar.
 The avatar supports exactly 5 animations: idle, walk, wave, point, crouch.
 "walk" is for moving toward a location.
 "wave" is for greeting or getting attention.
@@ -36,55 +38,50 @@ The avatar supports exactly 5 animations: idle, walk, wave, point, crouch.
 "idle" is for stopping and returning to neutral stance.
 
 Return ONLY valid JSON with this structure:
-{
-  "animation": "one of: idle|walk|wave|point|crouch",
-  "reasoning": "1 sentence explaining why this animation fits the command",
-  "target": "the scene object label the avatar should walk/point toward, or null"
-}
-${sceneDesc}
+{"animation": "one of: idle|walk|wave|point|crouch", "reasoning": "1 sentence explanation", "target": "scene object label or null"}`,
+        },
+        {
+          role: 'user',
+          content: `${sceneDesc}\n\nCommand: "${command}"`,
+        },
+      ]);
 
-Command: "${command}"`;
+      const jsonMatch = response.match(/\{[\s\S]*?\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]) as {
+          animation: string;
+          reasoning: string;
+          target: string | null;
+        };
 
-  try {
-    const response = await ollamaGenerate(command, 'minimax-m2.7:cloud', systemPrompt);
+        const animation = VALID_ANIMATIONS.includes(parsed.animation as AnimationIntent['animation'])
+          ? (parsed.animation as AnimationIntent['animation'])
+          : 'idle';
 
-    // Parse JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) {
-      return keywordFallback(command, sceneObjects);
+        const target = parsed.target
+          ? sceneObjects.find(o => o.label.toLowerCase().includes(parsed.target!.toLowerCase()))
+          : null;
+
+        const intent: AnimationIntent = {
+          animation,
+          explanation: parsed.reasoning,
+          confidence: 0.95,
+          ...(target && {
+            targetPosition: target.position,
+            targetLabel: target.label,
+          }),
+        };
+
+        console.log(`[LLM Intent] "${command}" → ${animation}${target ? ` → ${target.label}` : ''}`);
+
+        return { intent, raw: command };
+      }
     }
-
-    const parsed = JSON.parse(jsonMatch[0]) as {
-      animation: string;
-      reasoning: string;
-      target: string | null;
-    };
-
-    const animation = VALID_ANIMATIONS.includes(parsed.animation as AnimationIntent['animation'])
-      ? (parsed.animation as AnimationIntent['animation'])
-      : 'idle';
-
-    const target = parsed.target
-      ? sceneObjects.find(o => o.label.toLowerCase().includes(parsed.target!.toLowerCase()))
-      : null;
-
-    const intent: AnimationIntent = {
-      animation,
-      explanation: parsed.reasoning,
-      confidence: 0.95,
-      ...(target && {
-        targetPosition: target.position,
-        targetLabel: target.label,
-      }),
-    };
-
-    console.log(`[LLM Intent] "${command}" → ${animation}${target ? ` → ${target.label}` : ''} (reasoning: ${parsed.reasoning})`);
-
-    return { intent, raw: command };
   } catch (err) {
-    console.warn('[Intent Mapping] LLM failed, using keyword fallback:', err);
-    return keywordFallback(command, sceneObjects);
+    console.warn('[OpenRouter] Intent mapping failed, using keyword fallback:', err);
   }
+
+  return keywordFallback(command, sceneObjects);
 }
 
 // ─── Keyword fallback (used when Ollama unavailable) ─────────────────────────
@@ -156,6 +153,27 @@ function keywordFallback(command: string, sceneObjects: SceneObject[]): CommandR
 }
 
 export async function generateModelSummary(prompt: string): Promise<string> {
+  let hasOpenRouter = false;
+  try {
+    hasOpenRouter = isOpenRouterAvailable();
+    if (hasOpenRouter) {
+      const { openrouterChat } = await import('./openrouter');
+      const response = await openrouterChat([
+        {
+          role: 'system',
+          content: 'You are an educational content specialist for workplace safety training. Respond with exactly 2 sentences.',
+        },
+        {
+          role: 'user',
+          content: `Describe the professional training use of "${prompt}" in exactly 2 sentences for workplace safety training.`,
+        },
+      ]);
+      if (response.trim()) return response.trim();
+    }
+  } catch (err) {
+    console.warn('[OpenRouter] Summary failed, using fallback:', err);
+  }
+
   return summariesFallback(prompt);
 }
 

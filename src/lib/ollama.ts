@@ -1,6 +1,7 @@
 // ============================================
 // NexEra — Ollama AI Integration
 // ============================================
+import { isOpenRouterAvailable } from './openrouter';
 
 const OLLAMA_BASE = process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
 
@@ -57,13 +58,56 @@ export async function ollamaGenerate(
   return data.response;
 }
 
-// Classify an object for 3D model generation using keyword matching.
-export function generateObjectDescription(prompt: string): {
+// Classify an object for 3D model generation.
+// Uses OpenRouter LLM when API key is configured, falls back to keywords.
+export async function generateObjectDescription(prompt: string): Promise<{
   category: string;
   description: string;
   geometry: string;
   material: { color: string; metalness: number; roughness: number };
-} {
+}> {
+  let available = false;
+  try {
+    available = isOpenRouterAvailable();
+  } catch {
+    available = false;
+  }
+
+  if (!available) return classifyObjectFallback(prompt);
+
+  try {
+    const { openrouterChat } = await import('./openrouter');
+    const response = await openrouterChat([
+      {
+        role: 'system',
+        content: 'You are a 3D asset classifier. Respond ONLY with valid JSON, no markdown.',
+      },
+      {
+        role: 'user',
+        content: `For the object "${prompt}", respond with a JSON object with this exact structure:
+{
+  "category": "one word category like: tool, safety_equipment, vehicle, furniture, electronics",
+  "description": "2 sentence description of this object's training use",
+  "geometry": "basic shape: box, cylinder, sphere, cone, or compound",
+  "material": {"color": "hex color like #FFB300", "metalness": 0.0-1.0, "roughness": 0.0-1.0}
+}`,
+      },
+    ]);
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        category: parsed.category ?? 'generic',
+        description: parsed.description ?? '',
+        geometry: parsed.geometry ?? 'box',
+        material: parsed.material ?? { color: '#8B5CF6', metalness: 0.2, roughness: 0.5 },
+      };
+    }
+  } catch (err) {
+    console.warn('[OpenRouter] Classification failed, using keyword fallback:', err);
+  }
+
   return classifyObjectFallback(prompt);
 }
 
