@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+// Ready Player Me embed URLs (free, no auth required)
+const RPM_URL = 'https://readyplayer.me/avatar?frameApi=1';
+// Fallback: older URL that redirects to current creator
+const RPM_FALLBACK_URL = 'https://readyplayer.me';
+
 interface AvatarSelectorProps {
   onAvatarReady: (glbUrl: string) => void;
   currentGlbUrl?: string;
@@ -9,31 +14,45 @@ interface AvatarSelectorProps {
 
 export default function AvatarSelector({ onAvatarReady, currentGlbUrl }: AvatarSelectorProps) {
   const [isCreating, setIsCreating] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMessage = useCallback((event: MessageEvent) => {
     if (!event.data || event.data.source !== 'readyplayerme') return;
 
     if (event.data.eventName === 'v1.avatar.completed') {
       const { url } = event.data.data as { url: string };
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       setIsCreating(false);
+      setLoadError(null);
       onAvatarReady(url);
     }
 
     if (event.data.eventName === 'v1.iframe.loading-failed') {
-      setIsCreating(false);
-      setIsLoading(false);
-      alert('Avatar creator failed to load. Please try again.');
-
+      setLoadError('Avatar creator failed to load. Please check your connection and try again.');
     }
   }, [onAvatarReady]);
 
+  // Detect iframe load timeout (indicates RPM is down or blocked)
   useEffect(() => {
     if (!isCreating) return;
+
+    timeoutRef.current = setTimeout(() => {
+      setLoadError('Avatar creator is taking too long to load. Ready Player Me may be temporarily unavailable.');
+    }, 15000);
+
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [isCreating, handleMessage]);
+
+  // Reset error state when closing
+  useEffect(() => {
+    if (!isCreating) setLoadError(null);
+  }, [isCreating]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -79,13 +98,45 @@ export default function AvatarSelector({ onAvatarReady, currentGlbUrl }: AvatarS
               Cancel
             </button>
           </div>
-          <div className="relative h-[600px] rounded-xl overflow-hidden border border-[#2a2a3a]">
+          <div className="relative h-[600px] rounded-xl overflow-hidden border border-[#2a2a3a] bg-[#0a0a14]">
             <iframe
               ref={iframeRef}
-              src="https://readyplayer.me/avatar?frameApi=1"
+              src={RPM_URL}
               allow="camera *; microphone *"
               className="w-full h-full"
+              title="Ready Player Me Avatar Creator"
             />
+            {loadError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a14]/90">
+                <div className="text-center p-6 max-w-xs">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5" className="mx-auto mb-3">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                  <p className="text-sm text-[#9ca3af] mb-3">{loadError}</p>
+                  <p className="text-xs text-[#4b5563]">
+                    Ready Player Me may be temporarily unavailable.
+                    Try again in a moment, or check{' '}
+                    <a
+                      href="https://readyplayer.me"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#a855f7] underline"
+                    >
+                      readyplayer.me
+                    </a>
+                    {' '}directly.
+                  </p>
+                </div>
+              </div>
+            )}
+            {!loadError && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+                <div className="px-3 py-1.5 rounded-lg bg-black/60 text-xs text-[#6b7280]">
+                  Customize your avatar and click Done
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
