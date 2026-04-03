@@ -156,20 +156,33 @@ function keywordFallback(command: string, sceneObjects: SceneObject[]): CommandR
 }
 
 export async function generateModelSummary(prompt: string): Promise<string> {
-  try {
-    const available = await isOllamaAvailable();
+  return summariesFallback(prompt);
+}
 
-    if (available) {
-      const response = await ollamaGenerate(
-        `You are an educational content specialist. Describe the professional training use of "${prompt}" in exactly 2 sentences for workplace safety training.`,
-        'minimax-m2.7:cloud'
-      );
-      return response;
-    }
-  } catch (err) {
-    console.warn('[AI Summary] Ollama failed, using fallback:', err);
+function summariesFallback(prompt: string): string {
+  const lower = prompt.toLowerCase();
+
+  if (/hard[ -]?hat|helmet/.test(lower)) {
+    return 'A Personal Protective Equipment (PPE) head covering designed to protect against falling objects and impacts. Essential for construction sites, warehouses, and any environment where overhead hazards exist.';
+  }
+  if (/fire|extinguisher/.test(lower)) {
+    return 'Portable fire suppression equipment used to extinguish small fires before they escalate. Critical for emergency response training in workplaces and public spaces.';
+  }
+  if (/wrench|screwdriver|hammer|drill|tool/.test(lower)) {
+    return 'Hand tools used for mechanical and maintenance operations. Proper tool identification and usage is fundamental to workplace safety training.';
+  }
+  if (/first aid|medkit|defibrillator|AED/.test(lower)) {
+    return 'Emergency medical supplies for immediate treatment of injuries. Workplace first aid awareness is a core competency in occupational health and safety programs.';
+  }
+  if (/vest|safety/.test(lower)) {
+    return 'High-visibility apparel that ensures workers are seen in low-light or high-traffic environments. Mandatory in many industrial and roadway work zones.';
+  }
+  if (/ladder/.test(lower)) {
+    return 'Access equipment for elevated work tasks. Proper ladder inspection, placement, and climbing technique are essential fall-prevention skills.';
+  }
+  if (/car|truck|vehicle|forklift|bike/.test(lower)) {
+    return 'Motorized equipment requiring certified operator training. Safe vehicle operation around pedestrians and fixed obstacles is a core safety competency.';
   }
 
-  // Fallback
-  return `This ${prompt} is a training asset used in workplace safety and skills development. It is commonly featured in NexEra's human training modules for educational purposes.`;
+  return `A training asset used in workplace safety and skills development modules. This object is part of NexEra's educational content for professional competency building.`;
 }

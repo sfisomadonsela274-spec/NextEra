@@ -2,43 +2,26 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { generateWithHunyuan3D } from '@/lib/hunyuan3d';
+import { generateProceduralModel, exportToGLB } from '@/lib/procedural-model';
 import { generateObjectDescription } from '@/lib/ollama';
-import { Html, useGLTF } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 import { downloadGLB } from '@/lib/procedural-model';
 
-// ─── GLB loader inside R3F context ────────────────────────────────────────────
+// ─── Direct 3D model render ───────────────────────────────────────────────────
 
-interface GLBModelProps {
-  url: string;
+interface ModelProps {
+  model: THREE.Group;
   onLoaded?: () => void;
 }
 
-function GLBModel({ url, onLoaded }: GLBModelProps) {
-  const { scene } = useGLTF(url);
+function Model({ model, onLoaded }: ModelProps) {
   const groupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
     if (!groupRef.current) return;
 
-    // Clone scene so we can transform it independently
-    const clone = scene.clone();
-
-    // Auto-scale to fit ~2 units bounding box
-    const box = new THREE.Box3().setFromObject(clone);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (maxDim > 0) {
-      clone.scale.setScalar(2 / maxDim);
-    }
-
-    // Center: move so bottom sits on y=0
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    clone.position.x -= center.x;
-    clone.position.z -= center.z;
-    clone.position.y -= box.min.y;
+    // Clone the model
+    const clone = model.clone();
 
     // Enable shadows
     clone.traverse(child => {
@@ -50,7 +33,7 @@ function GLBModel({ url, onLoaded }: GLBModelProps) {
 
     groupRef.current.add(clone);
     onLoaded?.();
-  }, [scene, onLoaded]);
+  }, [model, onLoaded]);
 
   return <group ref={groupRef} />;
 }
@@ -99,30 +82,21 @@ export default function AIGeneratedModelViewer({
   onDescriptionGenerated,
   onModelReady,
 }: AIGeneratedModelViewerProps) {
+  const [model, setModel] = useState<THREE.Group | null>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
-  const [objectUrl, setObjectUrl] = useState<string>('');
   const [progressMsg, setProgressMsg] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  // Cleanup object URL on unmount
-  useEffect(() => {
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [objectUrl]);
 
   // Kick off generation whenever prompt changes
   useEffect(() => {
     if (!prompt.trim()) return;
 
     let cancelled = false;
-    const controller = new AbortController();
-    abortRef.current = controller;
 
+    setModel(null);
     setBlob(null);
     setError(null);
-    setProgressMsg('Initializing...');
+    setProgressMsg('Generating model...');
 
     async function run() {
       try {
@@ -131,25 +105,19 @@ export default function AIGeneratedModelViewer({
         if (cancelled) return;
         onDescriptionGenerated?.(classification.description);
 
-        // 2. Call Hunyuan3D-2
-        const resultBlob = await generateWithHunyuan3D({
-          prompt,
-          imageBase64: imageUrl,
-          onProgress: (msg) => {
-            if (!cancelled) setProgressMsg(msg);
-          },
-          signal: controller.signal,
-        });
+        if (cancelled) return;
+        setProgressMsg('Building 3D geometry...');
 
+        // 2. Generate procedural model
+        const result = await generateProceduralModel(prompt, classification);
         if (cancelled) return;
 
-        // 3. Revoke previous object URL, create new one
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        const url = URL.createObjectURL(resultBlob);
-        if (cancelled) { URL.revokeObjectURL(url); return; }
+        // 3. Export to GLB blob
+        const resultBlob = await exportToGLB(result.geometry);
+        if (cancelled) return;
 
+        setModel(result.geometry);
         setBlob(resultBlob);
-        setObjectUrl(url);
         setProgressMsg('');
       } catch (err) {
         if (!cancelled) {
@@ -161,8 +129,8 @@ export default function AIGeneratedModelViewer({
     }
 
     run();
-    return () => { cancelled = true; controller.abort(); };
-  }, [prompt, imageUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true; };
+  }, [prompt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Download handler
   async function handleDownload() {
@@ -204,11 +172,11 @@ export default function AIGeneratedModelViewer({
     );
   }
 
-  // Success — render GLB model with download button
-  if (objectUrl) {
+  // Success — render model with download button
+  if (model && blob) {
     return (
       <>
-        <GLBModel url={objectUrl} onLoaded={onModelReady} />
+        <Model model={model} onLoaded={onModelReady} />
         <Html position={[0, -1.0, 0]} center>
           <button
             onClick={handleDownload}

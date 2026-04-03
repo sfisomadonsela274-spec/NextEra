@@ -57,44 +57,14 @@ export async function ollamaGenerate(
   return data.response;
 }
 
-// Generate model description for 3D generation context
-export async function generateObjectDescription(prompt: string): Promise<{
+// Classify an object for 3D model generation using keyword matching.
+export function generateObjectDescription(prompt: string): {
   category: string;
   description: string;
   geometry: string;
   material: { color: string; metalness: number; roughness: number };
-}> {
-  const available = await isOllamaAvailable();
-
-  if (!available) {
-    // Fallback to keyword-based classification
-    return classifyObjectFallback(prompt);
-  }
-
-  try {
-    const response = await ollamaGenerate(
-      `You are a 3D asset classifier. For the object "${prompt}", respond ONLY with a JSON object with this exact structure:
-{
-  "category": "one word category like: tool, safety_equipment, vehicle, furniture, electronics",
-  "description": "2 sentence description of this object's training use",
-  "geometry": "basic shape: box, cylinder, sphere, cone, or compound",
-  "material": {"color": "hex color like #FFB300", "metalness": 0.0-1.0, "roughness": 0.0-1.0}
-}
-Respond ONLY with valid JSON, no markdown.`,
-      'minimax-m2.7:cloud',
-      'You are a 3D asset classification assistant. Always respond with valid JSON only.'
-    );
-
-    // Try to extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    return classifyObjectFallback(prompt);
-  } catch (err) {
-    console.warn('[Ollama] Generation failed, using fallback:', err);
-    return classifyObjectFallback(prompt);
-  }
+} {
+  return classifyObjectFallback(prompt);
 }
 
 function classifyObjectFallback(prompt: string): {
