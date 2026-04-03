@@ -1,21 +1,15 @@
 // ============================================
 // NexEra — OpenRouter AI Integration (free tier)
 // ============================================
-// Uses OpenRouter's free model tier for LLM-powered classification
-// and intent mapping. Falls back to keywords if no API key.
 
-// https://openrouter.ai/models?q=free
 const MODEL = 'qwen/qwen-2.5-72b-instruct:free';
 const BASE_URL = 'https://openrouter.ai/api/v1';
 
 export function isOpenRouterAvailable(): boolean {
-  return Boolean(process.env.OPENROUTER_API_KEY ||
-    process.env.NEXT_PUBLIC_OPENROUTER_API_KEY ||
-    OPENROUTER_API_KEY_BUILTIN);
+  return Boolean(
+    process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY
+  );
 }
-
-// Free-tier API key — safe to ship, no billing, no usage limits on free models
-const OPENROUTER_API_KEY_BUILTIN = '';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -25,7 +19,7 @@ interface ChatMessage {
 export async function openrouterChat(
   messages: ChatMessage[]
 ): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || OPENROUTER_API_KEY_BUILTIN;
+  const apiKey = process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not set');
 
   const res = await fetch(`${BASE_URL}/chat/completions`, {
@@ -46,7 +40,7 @@ export async function openrouterChat(
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`OpenRouter error: ${res.status} ${res.statusText} — ${body.slice(0, 200)}`);
+    throw new Error(`OpenRouter error: ${res.status} ${res.statusText}`);
   }
 
   const data = await res.json();

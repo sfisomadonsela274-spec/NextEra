@@ -181,26 +181,53 @@ function summariesFallback(prompt: string): string {
   const lower = prompt.toLowerCase();
 
   if (/hard[ -]?hat|helmet/.test(lower)) {
-    return 'A Personal Protective Equipment (PPE) head covering designed to protect against falling objects and impacts. Essential for construction sites, warehouses, and any environment where overhead hazards exist.';
+    return 'A high-impact thermoplastic shell designed to protect the wearer\'s head from falling objects, electrical hazards, and fixed-object impact. The internal suspension system absorbs kinetic energy on impact, making this one of the most critical pieces of Personal Protective Equipment (PPE) on any job site. Workers must inspect their hard hats daily for UV degradation, hairline cracks, and compromised suspension integrity per OSHA standards.';
   }
   if (/fire|extinguisher/.test(lower)) {
-    return 'Portable fire suppression equipment used to extinguish small fires before they escalate. Critical for emergency response training in workplaces and public spaces.';
+    return 'A pressurized device containing an extinguishing agent rated for specific fire classes (A, B, or C). Understanding which extinguisher type matches the hazard type — electrical, flammable liquid, or ordinary combustible — is critical for effective emergency response. Remember the PASS technique: Pull the pin, Aim low at the base, Squeeze the handle, and Sweep side to side.';
   }
-  if (/wrench|screwdriver|hammer|drill|tool/.test(lower)) {
-    return 'Hand tools used for mechanical and maintenance operations. Proper tool identification and usage is fundamental to workplace safety training.';
+  if (/wrench/.test(lower)) {
+    return 'A hand tool designed to apply torque to hexagonal nuts, bolts, and pipe fittings by gripping opposing flats. Using the correctly sized wrench prevents rounding of fastener heads and reduces the risk of injury from sudden slippage. Wrenches should be inspected for cracked jaws, worn teeth, and handle deformation after heavy use.';
   }
-  if (/first aid|medkit|defibrillator|AED/.test(lower)) {
-    return 'Emergency medical supplies for immediate treatment of injuries. Workplace first aid awareness is a core competency in occupational health and safety programs.';
+  if (/screwdriver/.test(lower)) {
+    return 'A hand tool used to drive or remove threaded fasteners by engaging the recessed head with a matching tip profile. Selecting the correct driver type — flathead, Phillips, Torx, or hex — is essential to prevent cam-out and fastener stripping that can lead to costly rework and hand injuries.';
+  }
+  if (/hammer/.test(lower)) {
+    return 'A striking tool consisting of a weighted head attached to a handle, used for driving nails, shaping sheet metal, and breaking objects. Proper hammer selection — matching head weight and handle material to the task — improves accuracy and reduces repetitive strain on the wrist and forearm.';
+  }
+  if (/drill/.test(lower)) {
+    return 'A powered rotary tool used to bore holes or drive screws with interchangeable bits. Selecting the correct rotation speed, bit material, and feed pressure ensures clean cuts and prevents motor overheating. Always secure the workpiece with clamps and wear eye protection before operation.';
+  }
+  if (/tool/.test(lower)) {
+    return 'A hand or powered instrument designed to perform specific mechanical or construction operations on materials, fasteners, or assemblies. Proper tool selection, inspection, and technique is foundational to both craftsmanship quality and personal safety on any worksite.';
   }
   if (/vest|safety/.test(lower)) {
-    return 'High-visibility apparel that ensures workers are seen in low-light or high-traffic environments. Mandatory in many industrial and roadway work zones.';
+    return 'A high-visibility garment constructed with fluorescent material and retroreflective striping to maximize worker visibility in low-light and high-traffic environments. ANSI/ISEA 107 compliance dictates minimum visibility area and band placement. The vest must be worn zipped or fully fastened at all times to maintain proper coverage.';
+  }
+  if (/first aid/.test(lower)) {
+    return 'A compact container holding sterile bandages, antiseptics, gauze, and specialty supplies for the immediate treatment of workplace injuries. OSHA mandates that first aid equipment be accessible, fully stocked, and maintained according to the workplace hazard assessment. Every worker should know the kit\'s location before an emergency occurs.';
+  }
+  if (/medkit/.test(lower)) {
+    return 'A portable medical supply kit designed for rapid response to cuts, burns, sprains, and other common workplace injuries. Regular inventory checks and expiration date monitoring ensure readiness when it matters most.';
+  }
+  if (/defibrillator|AED/.test(lower)) {
+    return 'An electronic device that delivers a controlled electrical shock to restore normal heart rhythm during sudden cardiac arrest. Defibrillation within 3-5 minutes of cardiac arrest increases survival rates by up to 70 percent. Workplace AED readiness and voice-guided pad placement saves lives while awaiting emergency services.';
   }
   if (/ladder/.test(lower)) {
-    return 'Access equipment for elevated work tasks. Proper ladder inspection, placement, and climbing technique are essential fall-prevention skills.';
+    return 'An elevated access device consisting of vertical rails connected by horizontal rungs or steps, used for tasks above arm\'s reach. Proper ladder setup follows the 4-to-1 ratio: for every four feet of height, the base should be one foot away from the support surface. Always maintain three points of contact while climbing.';
   }
-  if (/car|truck|vehicle|forklift|bike/.test(lower)) {
-    return 'Motorized equipment requiring certified operator training. Safe vehicle operation around pedestrians and fixed obstacles is a core safety competency.';
+  if (/car|truck|vehicle/.test(lower)) {
+    return 'A motorized transport asset designed for the movement of personnel or materials across the worksite or public roadways. Fleet safety programs emphasize pre-operation inspections, speed limits, seatbelt use, and proper load securing. Understanding right-of-way rules and vehicle blind spots is fundamental for operator certification.';
+  }
+  if (/forklift/.test(lower)) {
+    return 'An industrial lift truck used to raise, lower, and transport palletized loads in warehouses and industrial facilities. OSHA requires operator certification with training on load center, stability triangle, and overhead clearance before any operation.';
+  }
+  if (/bike/.test(lower)) {
+    return 'A two-wheeled human-powered or electric vehicle used for personal transport in campus or outdoor settings. Workplace bicycle safety includes helmet use, high-contrast visibility apparel, and yielding to motorized traffic on site roads.';
+  }
+  if (/table/.test(lower)) {
+    return 'A sturdy flat-surface work station used for assembly, inspection, or training demonstrations. Tables serve as the central anchor point for group training scenarios where learners gather around to observe and practice hands-on skills.';
   }
 
-  return `A training asset used in workplace safety and skills development modules. This object is part of NexEra's educational content for professional competency building.`;
+  return `A training asset used in workplace safety and professional skills development modules. This object is commonly featured in NexEra's educational content to support hands-on competency building, hazard recognition training, and practical assessment exercises.`;
 }
