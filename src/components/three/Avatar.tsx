@@ -1,31 +1,177 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { AnimationIntent } from '@/types';
-
-// ─── Animation name mapping for GLB models (when available) ──────────────────
-
-const ANIMATION_MAP: Record<AnimationIntent['animation'], string> = {
-  idle: 'Idle',
-  walk: 'Walking',
-  wave: 'Wave',
-  point: 'Point',
-  crouch: 'Crouch',
-};
 
 interface AvatarProps {
   animation: AnimationIntent['animation'];
   targetPosition?: [number, number, number];
   onAnimationStart?: (anim: string) => void;
+  avatarGlbUrl?: string;
 }
 
-export default function Avatar({ animation, targetPosition, onAnimationStart }: AvatarProps) {
-  // Always use the procedural humanoid — it's instant and responsive.
+export default function Avatar({ animation, targetPosition, onAnimationStart, avatarGlbUrl }: AvatarProps) {
+  if (avatarGlbUrl) {
+    return <RpmAvatar animation={animation} targetPosition={targetPosition} onAnimationStart={onAnimationStart} avatarGlbUrl={avatarGlbUrl} />;
+  }
   return <ProceduralHumanoid animation={animation} targetPosition={targetPosition} onAnimationStart={onAnimationStart} />;
 }
 
-// ─── Procedural humanoid ────────────────────────────────────────────────────
+// ─── Ready Player Me GLB avatar with procedural animation ────────────────────
+
+function RpmAvatar({ animation, targetPosition, onAnimationStart, avatarGlbUrl }: { animation: AnimationIntent['animation']; targetPosition?: [number, number, number]; onAnimationStart?: (anim: string) => void; avatarGlbUrl: string }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const bonesRef = useRef<Record<string, THREE.Object3D | null> | null>(null);
+  const animState = useRef({ time: 0, currentAnimation: animation });
+  const targetRef = useRef(targetPosition);
+
+  // Sync
+  useEffect(() => { targetRef.current = targetPosition; }, [targetPosition]);
+  useEffect(() => { animState.current.currentAnimation = animation; onAnimationStart?.(animation); }, [animation, onAnimationStart]);
+
+  // Load GLB
+  const { scene, animations } = useGLTF(avatarGlbUrl);
+
+  // Extract bone references on first load
+  useEffect(() => {
+    if (!groupRef.current) return;
+    const bones: Record<string, THREE.Object3D> = {};
+    scene.traverse(obj => {
+      if (obj.name) bones[obj.name] = obj;
+    });
+    bonesRef.current = bones;
+    groupRef.current.add(scene.clone());
+  }, [scene]);
+
+  // Animation loop
+  useEffect(() => {
+    const bones = bonesRef.current;
+    if (!bones) return;
+
+    const clock = new THREE.Clock();
+    let frameId: number;
+
+    // Find standard RPM bone names (case-insensitive)
+    const find = (...names: string[]) => {
+      for (const n of names) {
+        for (const key of Object.keys(bones)) {
+          if (key.toLowerCase().includes(n.toLowerCase())) return bones[key]!;
+        }
+      }
+      return null;
+    };
+
+    const spine = find('Spine', 'Hips', 'Torso')!;
+    const head = find('Head', 'head')!;
+    const leftArm = find('LeftArm', 'LeftShoulder', 'LeftForeArm', 'Left_Shoulder')!;
+    const rightArm = find('RightArm', 'RightShoulder', 'RightForeArm', 'Right_Shoulder')!;
+    const leftLeg = find('LeftUpLeg', 'LeftLeg', 'LeftThigh', 'Left_UpLeg', 'Left_Shin')!;
+    const rightLeg = find('RightUpLeg', 'RightLeg', 'RightThigh', 'Right_UpLeg', 'Right_Shin')!;
+
+    if (!spine || !head || !leftArm || !rightArm || !leftLeg || !rightLeg) return;
+
+    function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
+
+    function tick() {
+      frameId = requestAnimationFrame(tick);
+      const dt = clock.getDelta();
+      animState.current.time += dt;
+
+      const t = animState.current.time;
+      const anim = animState.current.currentAnimation;
+      const group = groupRef.current!;
+
+      switch (anim) {
+        case 'idle': {
+          const breathe = Math.sin(t * 2) * 0.01;
+          head.rotation.x = lerp(head.rotation.x, 0.01, 0.1);
+          head.rotation.z = lerp(head.rotation.z, 0, 0.1);
+          leftArm.rotation.x = lerp(leftArm.rotation.x, 0, 0.1);
+          leftArm.rotation.z = lerp(leftArm.rotation.z, -0.05, 0.1);
+          rightArm.rotation.x = lerp(rightArm.rotation.x, 0, 0.1);
+          rightArm.rotation.z = lerp(rightArm.rotation.z, 0.05, 0.1);
+          leftLeg.rotation.x = lerp(leftLeg.rotation.x, 0, 0.1);
+          rightLeg.rotation.x = lerp(rightLeg.rotation.x, 0, 0.1);
+          spine.rotation.y = lerp(spine.rotation.y, Math.sin(t * 0.5) * 0.02, 0.05);
+          spine.position.y = lerp(spine.position.y, spine.position.y + breathe * 0.5, 0.1);
+          group.position.y = lerp(group.position.y, 0, 0.1);
+          break;
+        }
+        case 'walk': {
+          const swing = Math.sin(t * 4) * 0.4;
+          leftLeg.rotation.x = lerp(leftLeg.rotation.x, swing, 0.15);
+          rightLeg.rotation.x = lerp(rightLeg.rotation.x, -swing, 0.15);
+          leftArm.rotation.x = lerp(leftArm.rotation.x, -swing * 0.5, 0.15);
+          rightArm.rotation.x = lerp(rightArm.rotation.x, swing * 0.5, 0.15);
+          leftArm.rotation.z = lerp(leftArm.rotation.z, 0, 0.1);
+          rightArm.rotation.z = lerp(rightArm.rotation.z, 0, 0.1);
+          head.rotation.x = lerp(head.rotation.x, 0, 0.1);
+          spine.rotation.y = lerp(spine.rotation.y, 0, 0.1);
+          group.position.y = Math.abs(Math.sin(t * 4)) * 0.03;
+
+          // Move toward target
+          const target = targetRef.current;
+          if (target) {
+            const dx = target[0] - group.position.x;
+            const dz = target[2] - group.position.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0.05) {
+              group.position.x += (dx / dist) * 0.8 * dt;
+              group.position.z += (dz / dist) * 0.8 * dt;
+              group.rotation.y = Math.atan2(dx, dz);
+            }
+          }
+          break;
+        }
+        case 'wave': {
+          rightArm.rotation.z = lerp(rightArm.rotation.z, -Math.PI * 0.8, 0.15);
+          rightArm.rotation.x = lerp(rightArm.rotation.x, 0.3, 0.15);
+          leftArm.rotation.z = lerp(leftArm.rotation.z, 0, 0.1);
+          leftArm.rotation.x = lerp(leftArm.rotation.x, 0, 0.1);
+          leftLeg.rotation.x = lerp(leftLeg.rotation.x, 0, 0.1);
+          rightLeg.rotation.x = lerp(rightLeg.rotation.x, 0, 0.1);
+          head.rotation.x = lerp(head.rotation.x, 0, 0.1);
+          spine.rotation.y = lerp(spine.rotation.y, 0, 0.1);
+          group.position.y = lerp(group.position.y, 0, 0.1);
+          break;
+        }
+        case 'point': {
+          rightArm.rotation.z = lerp(rightArm.rotation.z, -Math.PI * 0.3, 0.15);
+          rightArm.rotation.x = lerp(rightArm.rotation.x, -Math.PI / 2, 0.15);
+          leftArm.rotation.x = lerp(leftArm.rotation.x, 0, 0.1);
+          leftArm.rotation.z = lerp(leftArm.rotation.z, 0, 0.1);
+          leftLeg.rotation.x = lerp(leftLeg.rotation.x, 0, 0.1);
+          rightLeg.rotation.x = lerp(rightLeg.rotation.x, 0, 0.1);
+          head.rotation.x = lerp(head.rotation.x, 0.1, 0.1);
+          spine.rotation.y = lerp(spine.rotation.y, 0, 0.1);
+          group.position.y = lerp(group.position.y, 0, 0.1);
+          break;
+        }
+        case 'crouch': {
+          leftLeg.rotation.x = lerp(leftLeg.rotation.x, 0.5, 0.15);
+          rightLeg.rotation.x = lerp(rightLeg.rotation.x, 0.5, 0.15);
+          leftArm.rotation.x = lerp(leftArm.rotation.x, -0.2, 0.1);
+          rightArm.rotation.x = lerp(rightArm.rotation.x, -0.2, 0.1);
+          leftArm.rotation.z = lerp(leftArm.rotation.z, 0, 0.1);
+          rightArm.rotation.z = lerp(rightArm.rotation.z, 0, 0.1);
+          head.rotation.x = lerp(head.rotation.x, 0.2, 0.1);
+          spine.rotation.y = lerp(spine.rotation.y, 0, 0.1);
+          group.position.y = lerp(group.position.y, -0.3, 0.1);
+          break;
+        }
+      }
+    }
+
+    tick();
+    return () => cancelAnimationFrame(frameId);
+  }, [animations]); // re-run if animations change (new GLB loaded)
+
+  return <group ref={groupRef} />;
+}
+
+// ─── Procedural humanoid (fallback when no RPM avatar) ───────────────────────
 
 function ProceduralHumanoid({ animation, targetPosition, onAnimationStart }: { animation: AnimationIntent['animation']; targetPosition?: [number, number, number]; onAnimationStart?: (anim: string) => void }) {
   const groupRef = useRef<THREE.Group>(null);

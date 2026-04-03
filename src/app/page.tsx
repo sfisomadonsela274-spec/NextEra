@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import type { AnimationIntent, SceneObject } from '@/types';
 import { mapCommandToAnimation, generateModelSummary } from '@/lib/openai';
 import CommandInput from '@/components/ui/CommandInput';
+import AvatarSelector from '@/components/ui/AvatarSelector';
 import GenerationPanel from '@/components/ui/GenerationPanel';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
@@ -122,6 +123,7 @@ function Test2Tab() {
   const [log, setLog] = useState<Array<{ cmd: string; anim: string; time: string; target?: string }>>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [avatarTarget, setAvatarTarget] = useState<[number, number, number] | undefined>();
+  const [avatarGlbUrl, setAvatarGlbUrl] = useState<string | undefined>();
 
   const handleCommand = useCallback(async (cmd: string) => {
     setIsProcessing(true);
@@ -151,7 +153,7 @@ function Test2Tab() {
       {/* Avatar Viewer */}
       <div className="flex-1 min-h-[300px] lg:min-h-0 rounded-2xl overflow-hidden bg-[#0a0a14] border border-[#2a2a3a]">
         <SceneCanvas className="w-full h-full min-h-[300px] lg:min-h-[420px]">
-          <Avatar animation={animation} targetPosition={avatarTarget} />
+          <Avatar animation={animation} targetPosition={avatarTarget} avatarGlbUrl={avatarGlbUrl} />
         </SceneCanvas>
       </div>
 
@@ -162,9 +164,11 @@ function Test2Tab() {
             <h3 className="text-sm font-medium text-[#6b7280] mb-1">Test 2</h3>
             <h2 className="text-lg font-semibold text-white">Natural Language Avatar</h2>
             <p className="text-sm text-[#6b7280] mt-1">
-              Type a command to trigger an avatar animation
+              Create a Ready Player Me avatar, then command it with natural language
             </p>
           </div>
+
+          <AvatarSelector onAvatarReady={setAvatarGlbUrl} currentGlbUrl={avatarGlbUrl} />
 
           <CommandInput onSubmit={handleCommand} disabled={isProcessing} />
 
