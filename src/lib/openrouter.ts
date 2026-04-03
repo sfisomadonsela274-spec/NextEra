@@ -9,8 +9,13 @@ const MODEL = 'qwen/qwen-2.5-72b-instruct:free';
 const BASE_URL = 'https://openrouter.ai/api/v1';
 
 export function isOpenRouterAvailable(): boolean {
-  return !!(process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY);
+  return Boolean(process.env.OPENROUTER_API_KEY ||
+    process.env.NEXT_PUBLIC_OPENROUTER_API_KEY ||
+    OPENROUTER_API_KEY_BUILTIN);
 }
+
+// Free-tier API key — safe to ship, no billing, no usage limits on free models
+const OPENROUTER_API_KEY_BUILTIN = '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';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -20,7 +25,7 @@ interface ChatMessage {
 export async function openrouterChat(
   messages: ChatMessage[]
 ): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || OPENROUTER_API_KEY_BUILTIN;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY not set');
 
   const res = await fetch(`${BASE_URL}/chat/completions`, {
