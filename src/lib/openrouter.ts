@@ -15,7 +15,7 @@ export function isOpenRouterAvailable(): boolean {
 }
 
 // Free-tier API key — safe to ship, no billing, no usage limits on free models
-const OPENROUTER_API_KEY_BUILTIN = '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';
+const OPENROUTER_API_KEY_BUILTIN = '';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
