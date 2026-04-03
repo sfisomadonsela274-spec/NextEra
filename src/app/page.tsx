@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import type { AnimationIntent } from '@/types';
+import type { AnimationIntent, SceneObject } from '@/types';
 import { mapCommandToAnimation, generateModelSummary } from '@/lib/openai';
 import CommandInput from '@/components/ui/CommandInput';
 import GenerationPanel from '@/components/ui/GenerationPanel';
@@ -11,20 +11,23 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 // Dynamically import Three.js components (no SSR)
 const SceneCanvas = dynamic(() => import('@/components/three/SceneCanvas'), { ssr: false });
 const Avatar = dynamic(() => import('@/components/three/Avatar'), { ssr: false });
-const ProceduralModelViewer = dynamic(() => import('@/components/three/ProceduralModelViewer'), { ssr: false });
+const AIGeneratedModelViewer = dynamic(() => import('@/components/three/AIGeneratedModelViewer'), { ssr: false });
 const PlaceholderModel = dynamic(() => import('@/components/three/PlaceholderModel'), { ssr: false });
+const SceneObjectMarkers = dynamic(() => import('@/components/three/SceneObjectMarkers'), { ssr: false });
 
 // ─── Test 1: 3D Generation ────────────────────────────────────────────────────
 
 function Test1Tab() {
   const [prompt, setPrompt] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | undefined>();
   const [summary, setSummary] = useState<string | null>(null);
   const [modelKey, setModelKey] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleGenerate = useCallback(async (p: string) => {
+  const handleGenerate = useCallback(async (p: string, imgUrl?: string) => {
     setIsGenerating(true);
     setPrompt(p);
+    setImageUrl(imgUrl);
     setSummary(null);
 
     try {
@@ -32,7 +35,8 @@ function Test1Tab() {
       setSummary(text);
       setModelKey(k => k + 1);
     } finally {
-      setIsGenerating(false);
+      // Don't reset isGenerating — viewer manages its own loading state
+      // and calls onModelReady to release the spinner
     }
   }, []);
 
@@ -42,10 +46,12 @@ function Test1Tab() {
       <div className="flex-1 min-h-[300px] lg:min-h-0 rounded-2xl overflow-hidden bg-[#0a0a14] border border-[#2a2a3a]">
         <SceneCanvas className="w-full h-full min-h-[300px] lg:min-h-[420px]">
           {prompt ? (
-            <ProceduralModelViewer
+            <AIGeneratedModelViewer
               key={modelKey}
               prompt={prompt}
+              imageUrl={imageUrl}
               onDescriptionGenerated={setSummary}
+              onModelReady={() => setIsGenerating(false)}
             />
           ) : (
             <PlaceholderModel />
@@ -101,24 +107,36 @@ function Test1Tab() {
 
 // ─── Test 2: Avatar Animation ──────────────────────────────────────────────────
 
+// Scene objects for targeting demo
+const SCENE_OBJECTS: SceneObject[] = [
+  { id: 'fire_extinguisher', label: 'Fire Extinguisher', position: [1.5, 0.8, -0.5], type: 'safety' },
+  { id: 'first_aid_kit', label: 'First Aid Kit', position: [-1.2, 0.5, 0.5], type: 'medical' },
+  { id: 'hard_hat', label: 'Hard Hat', position: [0.8, 1.2, 0.8], type: 'safety' },
+  { id: 'wrench', label: 'Wrench', position: [-0.5, 0.3, -1.0], type: 'tool' },
+  { id: 'table', label: 'Table', position: [2.0, 0, 0], type: 'furniture' },
+];
+
 function Test2Tab() {
   const [animation, setAnimation] = useState<AnimationIntent['animation']>('idle');
   const [explanation, setExplanation] = useState<string | null>(null);
-  const [log, setLog] = useState<Array<{ cmd: string; anim: string; time: string }>>([]);
+  const [log, setLog] = useState<Array<{ cmd: string; anim: string; time: string; target?: string }>>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [avatarTarget, setAvatarTarget] = useState<[number, number, number] | undefined>();
 
   const handleCommand = useCallback(async (cmd: string) => {
     setIsProcessing(true);
     try {
-      const result = await mapCommandToAnimation(cmd);
+      const result = await mapCommandToAnimation(cmd, SCENE_OBJECTS);
       if (result.intent) {
         setAnimation(result.intent.animation);
         setExplanation(result.intent.explanation);
+        setAvatarTarget(result.intent.targetPosition);
         setLog(prev => [
           {
             cmd,
             anim: result.intent!.animation,
             time: new Date().toLocaleTimeString(),
+            target: result.intent!.targetLabel,
           },
           ...prev.slice(0, 9),
         ]);
@@ -133,7 +151,7 @@ function Test2Tab() {
       {/* Avatar Viewer */}
       <div className="flex-1 min-h-[300px] lg:min-h-0 rounded-2xl overflow-hidden bg-[#0a0a14] border border-[#2a2a3a]">
         <SceneCanvas className="w-full h-full min-h-[300px] lg:min-h-[420px]">
-          <Avatar animation={animation} />
+          <Avatar animation={animation} targetPosition={avatarTarget} />
         </SceneCanvas>
       </div>
 
@@ -179,9 +197,16 @@ function Test2Tab() {
                     <span className="text-xs text-[#4b5563]">{entry.time}</span>
                     <span className="text-sm text-[#d1d5db]">&quot;{entry.cmd}&quot;</span>
                   </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[#a855f7]/10 text-[#a855f7] font-medium">
-                    {entry.anim}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {entry.target && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[#22c55e]/10 text-[#22c55e]">
+                        → {entry.target}
+                      </span>
+                    )}
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#a855f7]/10 text-[#a855f7] font-medium">
+                      {entry.anim}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

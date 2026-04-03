@@ -20,14 +20,25 @@ const ANIMATION_MAP: Record<AnimationIntent['animation'], string> = {
 
 interface AvatarProps {
   animation: AnimationIntent['animation'];
+  targetPosition?: [number, number, number];
   onAnimationStart?: (anim: string) => void;
 }
 
-export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
+export default function Avatar({ animation, targetPosition, onAnimationStart }: AvatarProps) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const clipsRef = useRef<THREE.AnimationClip[]>([]);
+  const targetPositionRef = useRef<[number, number, number] | undefined>(targetPosition);
+  const isWalkingRef = useRef(false);
+
+  // Update target position ref when prop changes
+  useEffect(() => {
+    targetPositionRef.current = targetPosition;
+    if (targetPosition && animation === 'walk') {
+      isWalkingRef.current = true;
+    }
+  }, [targetPosition, animation]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
@@ -177,7 +188,7 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
 
   // Fallback procedural humanoid when model fails to load
   if (error) {
-    return <ProceduralHumanoid animation={animation} />;
+    return <ProceduralHumanoid animation={animation} targetPosition={targetPosition} />;
   }
 
   if (!loaded) {
@@ -196,9 +207,10 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
 }
 
 // Procedural humanoid fallback
-function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animation'] }) {
+function ProceduralHumanoid({ animation, targetPosition }: { animation: AnimationIntent['animation']; targetPosition?: [number, number, number] }) {
   const groupRef = useRef<THREE.Group>(null);
   const animRef = useRef<{ time: number }>({ time: 0 });
+  const targetRef = useRef<[number, number, number] | undefined>(targetPosition);
   const partsRef = useRef<{
     torso: THREE.Mesh | null;
     head: THREE.Mesh | null;
@@ -281,6 +293,11 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
     return () => { group.remove(...group.children); };
   }, []);
 
+  // Keep targetRef in sync when targetPosition prop changes
+  useEffect(() => {
+    targetRef.current = targetPosition;
+  }, [targetPosition]);
+
   // Animation loop
   useEffect(() => {
     if (!groupRef.current) return;
@@ -317,6 +334,20 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
           leftShoulder.rotation.x = -swing * 0.5;
           rightShoulder.rotation.x = swing * 0.5;
           groupRef.current!.position.y = Math.abs(Math.sin(t * 4)) * 0.03;
+          // Move toward target position if set
+          const target = targetRef.current;
+          if (target) {
+            const dx = target[0] - groupRef.current!.position.x;
+            const dz = target[2] - groupRef.current!.position.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0.05) {
+              const speed = 0.8;
+              groupRef.current!.position.x += (dx / dist) * speed * dt;
+              groupRef.current!.position.z += (dz / dist) * speed * dt;
+              // Face direction of movement
+              groupRef.current!.rotation.y = Math.atan2(dx, dz);
+            }
+          }
           break;
         }
         case 'wave': {
@@ -354,7 +385,7 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
 
     tick();
     return () => cancelAnimationFrame(frameId);
-  }, [animation]);
+  }, [animation, targetPosition]);
 
   return <group ref={groupRef} />;
 }

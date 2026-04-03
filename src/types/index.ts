@@ -20,6 +20,22 @@ export interface AnimationIntent {
   animation: 'idle' | 'walk' | 'wave' | 'point' | 'crouch';
   explanation: string;
   confidence: number;
+  targetPosition?: [number, number, number]; // Optional scene target for walk/point
+  targetLabel?: string; // e.g. "fire extinguisher", "table"
+}
+
+export interface SceneObject {
+  id: string;
+  label: string;
+  position: [number, number, number];
+  type: string;
+}
+
+export interface AvatarState {
+  currentAnimation: string;
+  isTransitioning: boolean;
+  position: [number, number, number];
+  targetPosition?: [number, number, number];
 }
 
 export interface CommandResult {
