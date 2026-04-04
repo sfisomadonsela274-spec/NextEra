@@ -97,7 +97,7 @@ Respond ONLY with valid JSON, no markdown.`,
   }
 }
 
-function classifyObjectFallback(prompt: string): {
+export function classifyObjectFallback(prompt: string): {
   category: string;
   description: string;
   geometry: string;

@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import type { AnimationIntent } from '@/types';
-import { mapCommandToAnimation, generateModelSummary } from '@/lib/openai';
+import { mapCommandToAnimation, generateViaAPI } from '@/lib/openai';
 import CommandInput from '@/components/ui/CommandInput';
 import GenerationPanel from '@/components/ui/GenerationPanel';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -21,18 +21,28 @@ function Test1Tab() {
   const [summary, setSummary] = useState<string | null>(null);
   const [modelKey, setModelKey] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  // Stored generated model data — passed directly so viewer renders it instantly
+  const [generatedGroup, setGeneratedGroup] = useState<object | null>(null);
 
-  const handleGenerate = useCallback(async (p: string) => {
+  const handleGenerate = useCallback(async (p: string, imageUrl?: string) => {
     setIsGenerating(true);
     setPrompt(p);
     setSummary(null);
+    setProgress(0);
+    setGeneratedGroup(null);
 
     try {
-      const text = await generateModelSummary(p);
-      setSummary(text);
+      // Convert image data URL to Base64 if it starts with 'data:' already it stays.
+      // If it's a file input result (data URL) — pass through.
+      const result = await generateViaAPI(p, imageUrl, undefined, setProgress);
+      setSummary(result.summary);
+      // Store the model group (it's a THREE.Group; the viewer gets the ref)
+      setGeneratedGroup((result.model as any).geometry ?? null);
       setModelKey(k => k + 1);
     } finally {
       setIsGenerating(false);
+      setProgress(100);
     }
   }, []);
 
@@ -45,6 +55,9 @@ function Test1Tab() {
             <ProceduralModelViewer
               key={modelKey}
               prompt={prompt}
+              onModelGenerated={async (data) => {
+                setGeneratedGroup((data as any).geometry ?? null);
+              }}
               onDescriptionGenerated={setSummary}
             />
           ) : (
@@ -60,14 +73,14 @@ function Test1Tab() {
             <h3 className="text-sm font-medium text-[#6b7280] mb-1">Test 1</h3>
             <h2 className="text-lg font-semibold text-white">AI-Generated 3D Asset</h2>
             <p className="text-sm text-[#6b7280] mt-1">
-              Describe a training object — AI generates a procedural 3D model
+              Describe a training object — or upload an image — AI generates a procedural 3D model
             </p>
           </div>
 
           <GenerationPanel
             onGenerate={handleGenerate}
             isGenerating={isGenerating}
-            progress={0}
+            progress={progress}
           />
 
           <div className="text-xs text-[#4b5563]">
@@ -100,6 +113,12 @@ function Test1Tab() {
 }
 
 // ─── Test 2: Avatar Animation ──────────────────────────────────────────────────
+
+const AVATAR_COMMANDS = [
+  'wave hello', 'walk forward', 'point at target', 'crouch down',
+  'show correct safety posture', 'jump up', 'celebrate', 'look around',
+  'pick up the object', 'open the door', 'stop',
+] as const;
 
 function Test2Tab() {
   const [animation, setAnimation] = useState<AnimationIntent['animation']>('idle');
@@ -152,7 +171,7 @@ function Test2Tab() {
 
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#1a1a28] border border-[#2a2a3a]">
             <div className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse" />
-            <span className="text-sm font-medium text-white capitalize">Current: {animation}</span>
+            <span className="text-sm font-medium text-white capitalize">Current: {animation.replace('_', ' ')}</span>
           </div>
         </div>
 
@@ -180,7 +199,7 @@ function Test2Tab() {
                     <span className="text-sm text-[#d1d5db]">&quot;{entry.cmd}&quot;</span>
                   </div>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-[#a855f7]/10 text-[#a855f7] font-medium">
-                    {entry.anim}
+                    {entry.anim.replace('_', ' ')}
                   </span>
                 </div>
               ))}
@@ -192,7 +211,7 @@ function Test2Tab() {
         <div className="bg-[#12121c] border border-[#2a2a3a] rounded-2xl p-5">
           <h3 className="text-sm font-medium text-[#6b7280] mb-3">Quick Commands</h3>
           <div className="flex flex-wrap gap-2">
-            {(['wave hello', 'walk forward', 'point at target', 'crouch down', 'stop'] as const).map(cmd => (
+            {AVATAR_COMMANDS.map(cmd => (
               <button
                 key={cmd}
                 onClick={() => handleCommand(cmd)}

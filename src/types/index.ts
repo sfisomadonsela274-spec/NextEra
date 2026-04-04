@@ -17,7 +17,7 @@ export interface ModelGenerationRequest {
 }
 
 export interface AnimationIntent {
-  animation: 'idle' | 'walk' | 'wave' | 'point' | 'crouch';
+  animation: 'idle' | 'walk' | 'wave' | 'point' | 'crouch' | 'posture' | 'jump' | 'celebrate' | 'look_around' | 'pick_up' | 'open_door';
   explanation: string;
   confidence: number;
 }

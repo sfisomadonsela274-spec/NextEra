@@ -11,7 +11,8 @@ interface SceneCanvasProps {
   cameraPosition?: [number, number, number];
 }
 
-export default function SceneCanvas({ children, className, cameraPosition = [0, 1.5, 4]: SceneCanvasProps) {
+const defaultCamera: [number, number, number] = [0, 1.5, 4];
+export default function SceneCanvas({ children, className, cameraPosition = defaultCamera }: SceneCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
 
@@ -40,14 +41,17 @@ export default function SceneCanvas({ children, className, cameraPosition = [0, 
 
   // Calculate responsive camera position based on container size
   const getCameraPosition = (): [number, number, number] => {
+    // Use the provided cameraPosition override
+    if (cameraPosition !== defaultCamera) {
+      return cameraPosition;
+    }
     const aspectRatio = size.width / size.height;
     const baseDistance = 4;
 
-    // Adjust distance based on aspect ratio to keep object properly framed
     let distance = baseDistance;
-    if (aspectRatio > 1.6) { // Wide screen
+    if (aspectRatio > 1.6) {
       distance = baseDistance * (1 + (aspectRatio - 1.6) * 0.3);
-    } else if (aspectRatio < 0.6) { // Tall screen
+    } else if (aspectRatio < 0.6) {
       distance = baseDistance * (1 + (0.6 - aspectRatio) * 0.3);
     }
 

@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { generateProceduralModel, type GeneratedModelData } from '@/lib/procedural-model';
-import { generateObjectDescription } from '@/lib/ollama';
 
 interface ProceduralModelViewerProps {
   prompt: string;
@@ -29,19 +28,51 @@ export default function ProceduralModelViewer({
 
     async function build() {
       try {
-        // Get AI classification
-        const classification = await generateObjectDescription(prompt);
+        // ── Try server AI classification (HF via API route) ───────
+        let classification: {
+          category: string;
+          description: string;
+          material: { color: string; metalness: number; roughness: number };
+          geometry?: string;
+        } | null = null;
 
-        // Generate procedural model
-        const data = await generateProceduralModel(prompt, classification);
+        try {
+          const res = await fetch('/api/classify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt }),
+          });
 
+          if (res.ok) {
+            const apiData = await res.json();
+            classification = {
+              ...apiData.classification,
+              geometry: prompt.toLowerCase(),
+            };
+            onDescriptionGenerated?.(apiData.summary ?? apiData.classification.description);
+          }
+        } catch {
+          console.warn('[ProceduralModel] /api/classify failed, falling back');
+        }
+
+        // ── Local fallback ───────
+        if (!classification) {
+          const { generateObjectDescription } = await import('@/lib/ollama');
+          const local = await generateObjectDescription(prompt);
+          classification = {
+            category: local.category,
+            description: local.description,
+            material: local.material,
+            geometry: local.geometry,
+          };
+          onDescriptionGenerated?.(local.description);
+        }
+
+        // Procedural model
+        const data = await generateProceduralModel(prompt, classification as Required<typeof classification>);
         if (cancelled) return;
-
         setModelData(data);
         onModelGenerated?.(data);
-
-        // Generate educational description
-        onDescriptionGenerated?.(classification.description);
       } catch (err) {
         console.error('[ProceduralModel]', err);
       } finally {
@@ -53,7 +84,7 @@ export default function ProceduralModelViewer({
     return () => { cancelled = true; };
   }, [prompt, onModelGenerated, onDescriptionGenerated]);
 
-  // Attach/detach model
+  // Attach/detach
   useEffect(() => {
     if (!modelData || !groupRef.current) return;
 

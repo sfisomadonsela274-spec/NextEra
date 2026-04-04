@@ -16,6 +16,12 @@ const ANIMATION_MAP: Record<AnimationIntent['animation'], string> = {
   wave: 'Wave',
   point: 'Point',
   crouch: 'Crouch',
+  posture: 'Standing',
+  jump: 'Jump',
+  celebrate: 'Celebrate',
+  look_around: 'LookAround',
+  pick_up: 'PickUp',
+  open_door: 'OpenDoor',
 };
 
 interface AvatarProps {
@@ -206,7 +212,8 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
     rightShoulder: THREE.Group | null;
     leftHip: THREE.Group | null;
     rightHip: THREE.Group | null;
-  }>({ torso: null, head: null, leftShoulder: null, rightShoulder: null, leftHip: null, rightHip: null });
+    rightHand: THREE.Mesh | null;
+  }>({ torso: null, head: null, leftShoulder: null, rightShoulder: null, leftHip: null, rightHip: null, rightHand: null });
 
   useEffect(() => {
     if (!groupRef.current) return;
@@ -254,6 +261,7 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
     rightShoulder.add(rightHand);
     group.add(rightShoulder);
     partsRef.current.rightShoulder = rightShoulder;
+    partsRef.current.rightHand = rightHand;
 
     // Legs
     const leftHip = new THREE.Group();
@@ -298,6 +306,9 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
       const t = animRef.current.time;
       const { torso, head, leftShoulder, rightShoulder, leftHip, rightHip } = partsRef.current;
       if (!torso || !head || !leftShoulder || !rightShoulder || !leftHip || !rightHip) return;
+
+      let chestUp: number;
+      let armSwing: number;
 
       switch (animation) {
         case 'idle': {
@@ -347,6 +358,79 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
           groupRef.current!.position.y = lerp(groupRef.current!.position.y, -0.3, 0.1);
           torso.position.y = lerp(torso.position.y, 0.8, 0.1);
           head.position.y = lerp(head.position.y, 1.2, 0.1);
+          break;
+        }
+        case 'posture': {
+          chestUp = Math.sin(t * 0.5) * 0.02 + 1.18;
+          torso.position.y = lerp(torso.position.y, chestUp, 0.1);
+          head.position.y = lerp(head.position.y, 1.6, 0.1);
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, -0.15, 0.1);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, 0.15, 0.1);
+          leftShoulder.rotation.x = lerp(leftShoulder.rotation.x, -0.1, 0.1);
+          rightShoulder.rotation.x = lerp(rightShoulder.rotation.x, -0.1, 0.1);
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
+          head.rotation.x = lerp(head.rotation.x, 0, 0.1);
+          break;
+        }
+        case 'jump': {
+          const phase = (t * 3) % (Math.PI * 2);
+          const jumpHeight = Math.max(0, Math.sin(phase));
+          groupRef.current!.position.y = jumpHeight * 0.3;
+          if (jumpHeight < 0.1) {
+            leftHip.rotation.x = lerp(leftHip.rotation.x, 0.6, 0.1);
+            rightHip.rotation.x = lerp(rightHip.rotation.x, 0.6, 0.1);
+          } else {
+            leftHip.rotation.x = lerp(leftHip.rotation.x, -0.3, 0.1);
+            rightHip.rotation.x = lerp(rightHip.rotation.x, -0.3, 0.1);
+          }
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, jumpHeight > 0.1 ? -Math.PI * 0.6 : 0, 0.15);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, jumpHeight > 0.1 ? Math.PI * 0.6 : 0, 0.15);
+          break;
+        }
+        case 'celebrate': {
+          armSwing = Math.sin(t * 4) * 0.3;
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, -Math.PI * 0.7 + armSwing, 0.15);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, Math.PI * 0.7 + armSwing, 0.15);
+          head.rotation.y = Math.sin(t * 2) * 0.3;
+          groupRef.current!.position.y = Math.abs(Math.sin(t * 8)) * 0.08;
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
+          break;
+        }
+        case 'look_around': {
+          head.rotation.y = Math.sin(t * 1.2) * 0.8;
+          head.rotation.x = Math.sin(t * 0.6) * 0.15;
+          torso.rotation.y = Math.sin(t * 0.8) * 0.2;
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, 0, 0.1);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, 0, 0.1);
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
+          break;
+        }
+        case 'pick_up': {
+          const lerpTarget = Math.sin(t * 2) * 0.5;
+          leftHip.rotation.x = lerp(leftHip.rotation.x, lerpTarget * 0.8, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, lerpTarget * 0.8, 0.1);
+          torso.position.y = lerp(torso.position.y, 0.7 + lerpTarget * -0.2, 0.1);
+          head.position.y = lerp(head.position.y, 1.1, 0.1);
+          leftShoulder.rotation.x = lerp(leftShoulder.rotation.x, lerpTarget * 1.5, 0.15);
+          rightShoulder.rotation.x = lerp(rightShoulder.rotation.x, lerpTarget * 1.5, 0.15);
+          groupRef.current!.position.y = lerp(groupRef.current!.position.y, lerpTarget * -0.15, 0.1);
+          break;
+        }
+        case 'open_door': {
+          const reachT = (Math.sin(t * 1.5) + 1) / 2;
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, -Math.PI * 0.3, reachT * 0.15 + 0.05);
+          rightShoulder.rotation.x = lerp(rightShoulder.rotation.x, -Math.PI / 3, reachT * 0.15 + 0.05);
+          if (partsRef.current.rightHand) {
+            (partsRef.current.rightHand as THREE.Mesh).position.z = Math.sin(t * 1.5) * 0.15;
+          }
+          torso.rotation.y = lerp(torso.rotation.y, reachT * 0.3, 0.1);
+          head.rotation.y = lerp(head.rotation.y, reachT * 0.2, 0.1);
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, 0, 0.1);
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
           break;
         }
       }
