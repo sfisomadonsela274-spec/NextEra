@@ -85,8 +85,6 @@ async function classifyViaOllama(prompt: string) {
 
   if (!parsed) return null;
 
-  if (!parsed) return null;
-
   return buildResult(prompt, {
     category: String(parsed.category ?? 'generic'),
     description: String(parsed.description ?? ''),
@@ -95,10 +93,25 @@ async function classifyViaOllama(prompt: string) {
       metalness: Number(parsed.metalness ?? 0.2),
       roughness: Number(parsed.roughness ?? 0.5),
     },
+    geometry: guessGeometry(prompt),
   });
 }
 
-// ─── Hugging Face ──────────────────────────────────────────────
+function guessGeometry(prompt: string): string {
+  const lower = prompt.toLowerCase();
+  if (/hard[ -]?hat|helmet/.test(lower)) return 'compound';
+  if (/extinguisher|fire/.test(lower)) return 'cylinder';
+  if (/vest|safety/.test(lower)) return 'compound';
+  if (/wrench|screwdriver|drill/.test(lower)) return 'compound';
+  if (/ladder/.test(lower)) return 'compound';
+  if (/first.*aid|medkit|defib|aed/.test(lower)) return 'box';
+  if (/vehicle|car|truck|forklift/.test(lower)) return 'compound';
+  if (/cone/.test(lower)) return 'cone';
+  if (/barrier/.test(lower)) return 'box';
+  if (/boot|glove/.test(lower)) return 'compound';
+  if (/pipe|valve/.test(lower)) return 'cylinder';
+  return 'box';
+}
 
 async function classifyViaHF(prompt: string, imageUrl: string, imageBase64: string) {
   let userContent: Array<{ type: string; text?: string; image_url?: { url: string } }>;
@@ -169,10 +182,14 @@ function buildResult(
     category: string;
     description: string;
     material: { color: string; metalness: number; roughness: number };
+    geometry?: string;
   }
 ) {
   return {
-    classification,
+    classification: {
+      ...classification,
+      geometry: classification.geometry ?? guessGeometry(prompt),
+    },
     summary: summaries[classification.category] || genericSummary(prompt),
   };
 }
@@ -195,27 +212,28 @@ const summaries: Record<string, string> = {
 function keywordFallback(text: string) {
   const lower = text.toLowerCase().trim();
 
-  const entries: [RegExp, string, string, string, string, number, number][] = [
-    // regex,           category,     desc,                                                          summary,                                                          color,        metal, rough
-    [/hard[ -]?hat|helmet/,              'safety_equipment', 'Personal protective headgear against falling objects in construction and industrial environments.', 'A hard hat protects against falling objects and impacts — one of the most critical pieces of PPE on any worksite.',    '#FFB300', 0.1, 0.7],
-    [/fire.*extinguisher|fire.*alarm/,   'safety_equipment', 'Portable fire safety equipment for extinguishing small fires.', 'A fire extinguisher is essential for initial fire response — every trained worker should know the PASS method.',                        '#DC2626', 0.3, 0.5],
-    [/safety.*vest|hi.*vis|high.*vis/,   'safety_equipment', 'High-visibility garment for hazardous areas.', 'A safety vest ensures workers are visible to vehicle operators in low-light or busy environments.',                                                   '#FF6600', 0.0, 0.9],
-    [/first.*aid|medkit|defib|aed/,      'medical',          'Emergency medical supply kit for immediate treatment.', 'A first aid kit provides immediate response supplies — it must be accessible and contents regularly checked.',                   '#FFFFFF', 0.1, 0.6],
-    [/wrench|screwdriver|hammer|drill/,  'tool',             'Hand tool for fastening, loosening, or shaping.', 'Using the right tool with proper technique prevents injuries and equipment damage on the worksite.',                            '#6B7280', 0.8, 0.3],
-    [/ladder|scaffold|step.*stool/,      'tool',             'Access equipment for reaching elevated areas.', 'Falls from ladders are a top workplace injury — proper setup, inspection, and 3-point contact are critical.',                   '#E6A200', 0.1, 0.7],
-    [/car|truck|forklift|vehicle/,       'vehicle',          'Workplace vehicle requiring trained operators.', 'Forklift and vehicle safety is mandatory — operators must be certified and follow site-specific traffic rules.',                '#1E40AF', 0.6, 0.4],
-    [/cone|barrier|warning.*sign/,       'safety_equipment', 'Temporary warning device for hazard marking.', 'Cones and barriers create visual hazard zones — essential for site control and pedestrian safety.',                            '#FFA500', 0.0, 0.8],
-    [/glove|boot|goggle|mask|respirator/,'safety_equipment', 'Personal protective equipment for specific body protection.', 'PPE is the last line of defense — proper selection, fitting, and inspection prevents workplace injuries.',                      '#374151', 0.1, 0.7],
-    [/pipe|valve|pipe[ -]?wrench/,       'tool',             'Plumbing tool for connecting or controlling fluid flow.', 'Proper pipe and valve handling is critical in industrial safety to prevent leaks and hazardous material exposure.',             '#9CA3AF', 0.7, 0.3],
+  const entries: [RegExp, string, string, string, string, string, number, number][] = [
+    // regex,           category,     geom,      desc,                                                          summary,                                                          color,        metal, rough
+    [/hard[ -]?hat|helmet/,              'safety_equipment', 'compound', 'Personal protective headgear against falling objects in construction and industrial environments.', 'A hard hat protects against falling objects and impacts — one of the most critical pieces of PPE on any worksite.',    '#FFB300', 0.1, 0.7],
+    [/fire.*extinguisher|fire.*alarm/,   'safety_equipment', 'cylinder', 'Portable fire safety equipment for extinguishing small fires.', 'A fire extinguisher is essential for initial fire response — every trained worker should know the PASS method.',                        '#DC2626', 0.3, 0.5],
+    [/safety.*vest|hi.*vis|high.*vis/,   'safety_equipment', 'compound', 'High-visibility garment for hazardous areas.', 'A safety vest ensures workers are visible to vehicle operators in low-light or busy environments.',                                                   '#FF6600', 0.0, 0.9],
+    [/first.*aid|medkit|defib|aed/,      'medical',          'box',      'Emergency medical supply kit for immediate treatment.', 'A first aid kit provides immediate response supplies — it must be accessible and contents regularly checked.',                   '#FFFFFF', 0.1, 0.6],
+    [/wrench|screwdriver|hammer|drill/,  'tool',             'compound', 'Hand tool for fastening, loosening, or shaping.', 'Using the right tool with proper technique prevents injuries and equipment damage on the worksite.',                            '#6B7280', 0.8, 0.3],
+    [/ladder|scaffold|step.*stool/,      'tool',             'compound', 'Access equipment for reaching elevated areas.', 'Falls from ladders are a top workplace injury — proper setup, inspection, and 3-point contact are critical.',                   '#E6A200', 0.1, 0.7],
+    [/car|truck|forklift|vehicle/,       'vehicle',          'compound', 'Workplace vehicle requiring trained operators.', 'Forklift and vehicle safety is mandatory — operators must be certified and follow site-specific traffic rules.',                '#1E40AF', 0.6, 0.4],
+    [/cone|barrier|warning.*sign/,       'safety_equipment', 'cone',     'Temporary warning device for hazard marking.', 'Cones and barriers create visual hazard zones — essential for site control and pedestrian safety.',                            '#FFA500', 0.0, 0.8],
+    [/glove|boot|goggle|mask|respirator/,'safety_equipment', 'compound', 'Personal protective equipment for specific body protection.', 'PPE is the last line of defense — proper selection, fitting, and inspection prevents workplace injuries.',                      '#374151', 0.1, 0.7],
+    [/pipe|valve|pipe[ -]?wrench/,       'tool',             'cylinder', 'Plumbing tool for connecting or controlling fluid flow.', 'Proper pipe and valve handling is critical in industrial safety to prevent leaks and hazardous material exposure.',             '#9CA3AF', 0.7, 0.3],
   ];
 
-  for (const [regex, category, desc, summary, color, metal, rough] of entries) {
+  for (const [regex, category, geometry, desc, summary, color, metal, rough] of entries) {
     if (regex.test(lower)) {
       return {
         classification: {
           category,
           description: desc,
           material: { color, metalness: metal, roughness: rough },
+          geometry,
         },
         summary,
       };
@@ -228,6 +246,7 @@ function keywordFallback(text: string) {
       category: 'generic',
       description: `Training asset representing "${text}" — used in NexEra's workplace safety and skills development modules.`,
       material: { color: '#8B5CF6', metalness: 0.2, roughness: 0.5 },
+      geometry: 'box',
     },
     summary: `This "${text.toLowerCase()}" is used in NexEra's training modules to give learners hands-on experience with workplace safety content.`,
   };
