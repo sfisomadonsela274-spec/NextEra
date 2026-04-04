@@ -40,7 +40,7 @@ export default function GenerationPanel({ onGenerate, isGenerating, progress }: 
           onChange={e => setPrompt(e.target.value)}
           placeholder="Describe a training object: 'Fire extinguisher', 'Safety helmet'..."
           disabled={isGenerating}
-          className="w-full h-11 px-4 rounded-xl bg-bg-card border border-border text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/50 transition-all text-sm"
+          className="w-full h-11 px-4 rounded-xl bg-white/60 border border-slate-200/60 text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-200/50 transition-all text-sm backdrop-blur-sm"
         />
 
         {/* Image dropzone */}
@@ -50,7 +50,8 @@ export default function GenerationPanel({ onGenerate, isGenerating, progress }: 
           onDrop={handleDrop}
           className={`
             relative rounded-xl border-2 border-dashed transition-all text-center py-4 px-4 cursor-pointer
-            ${dragOver ? 'border-accent bg-accent/5' : 'border-border hover:border-accent/50'}
+            ${dragOver ? 'border-violet-400 bg-violet-50/30' : 'border-slate-200/50 hover:border-violet-300'}
+            bg-white/40 backdrop-blur-sm
           `}
         >
           <input
@@ -69,11 +70,11 @@ export default function GenerationPanel({ onGenerate, isGenerating, progress }: 
           />
           {imageUrl ? (
             <div className="flex items-center gap-3">
-              <img src={imageUrl} alt="Uploaded" className="w-12 h-12 object-cover rounded-lg" />
-              <span className="text-sm text-text-secondary">Image uploaded — drop another to replace</span>
+              <img src={imageUrl} alt="Uploaded" className="w-12 h-12 object-cover rounded-lg border border-slate-200/50" />
+              <span className="text-sm text-slate-500">Image uploaded — drop another to replace</span>
             </div>
           ) : (
-            <span className="text-sm text-text-secondary">
+            <span className="text-sm text-slate-400">
               Drop an image here to use as reference (optional)
             </span>
           )}
@@ -83,7 +84,7 @@ export default function GenerationPanel({ onGenerate, isGenerating, progress }: 
         <button
           type="submit"
           disabled={!prompt.trim() || isGenerating}
-          className="h-11 rounded-xl bg-accent hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-sm transition-all flex items-center justify-center gap-2"
+          className="h-11 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 hover:from-violet-600 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-md shadow-violet-500/20 hover:shadow-lg hover:shadow-violet-500/30 disabled:shadow-none"
         >
           {isGenerating ? (
             <>
@@ -102,9 +103,9 @@ export default function GenerationPanel({ onGenerate, isGenerating, progress }: 
 
         {/* Progress bar */}
         {isGenerating && (
-          <div className="h-1 w-full bg-bg-card rounded-full overflow-hidden">
+          <div className="h-1.5 w-full bg-slate-200/50 rounded-full overflow-hidden">
             <div
-              className="h-full bg-accent transition-all duration-500 ease-out"
+              className="h-full bg-gradient-to-r from-violet-500 to-indigo-600 transition-all duration-500 ease-out rounded-full"
               style={{ width: `${progress}%` }}
             />
           </div>
