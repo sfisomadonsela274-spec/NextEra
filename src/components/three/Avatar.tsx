@@ -34,6 +34,7 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
   const clipsRef = useRef<THREE.AnimationClip[]>([]);
+  const rafRef = useRef<number>(0); // Single persistent rAF
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
@@ -46,20 +47,13 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
     async function loadModel() {
       try {
         const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
-        const { RGBELoader } = await import('three/addons/loaders/RGBELoader.js');
 
         const loader = new GLTFLoader();
 
-        // Try each model URL until one works
         for (const url of AVATAR_MODELS) {
           try {
             const gltf = await new Promise<any>((resolve, reject) => {
-              loader.load(
-                url,
-                resolve,
-                undefined,
-                reject
-              );
+              loader.load(url, resolve, undefined, reject);
             });
 
             if (cancelled) return;
@@ -87,7 +81,6 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
               mixerRef.current = new THREE.AnimationMixer(model);
               clipsRef.current = gltf.animations;
 
-              // Play first animation (usually idle)
               const firstClip = gltf.animations[0];
               const action = mixerRef.current.clipAction(firstClip);
               action.play();
@@ -96,13 +89,12 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
 
             groupRef.current!.add(model);
             setLoaded(true);
-            return; // Success
+            return;
           } catch {
-            continue; // Try next URL
+            continue;
           }
         }
 
-        // All URLs failed
         if (!cancelled) setError(true);
       } catch (err) {
         console.error('[Avatar] Load error:', err);
@@ -114,17 +106,32 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
     return () => { cancelled = true; };
   }, []);
 
-  // Handle animation changes
+  // Single persistent animation frame loop — runs for the lifetime of the component
+  // Works for both GLB model mixer AND procedural humanoid
+  useEffect(() => {
+    const clock = new THREE.Clock();
+
+    function tick() {
+      rafRef.current = requestAnimationFrame(tick);
+      const delta = clock.getDelta();
+      mixerRef.current?.update(delta);
+    }
+
+    tick();
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  // Handle animation changes (GLB model clips)
   useEffect(() => {
     if (!mixerRef.current || !currentActionRef.current) return;
 
-    // Find matching animation clip
     const targetName = ANIMATION_MAP[animation];
     const clips = clipsRef.current;
 
     let targetClip: THREE.AnimationClip | null = null;
 
-    // Try exact match first
     for (const clip of clips as THREE.AnimationClip[]) {
       if (clip.name.toLowerCase().includes(targetName.toLowerCase())) {
         targetClip = clip;
@@ -132,11 +139,10 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
       }
     }
 
-    // If no match, try partial match
     if (!targetClip) {
       const lower = targetName.toLowerCase();
       if (animation === 'idle') {
-        for (const clip of clips as THREE.AnimationClip[]) {
+        for (const clip of clips) {
           const name = clip.name.toLowerCase();
           if (name.includes('idle') || name.includes('stand') || name.includes('rest')) {
             targetClip = clip;
@@ -144,7 +150,7 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
           }
         }
       } else if (animation === 'walk') {
-        for (const clip of clips as THREE.AnimationClip[]) {
+        for (const clip of clips) {
           const name = clip.name.toLowerCase();
           if (name.includes('walk') || name.includes('run') || name.includes('move')) {
             targetClip = clip;
@@ -155,7 +161,7 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
     }
 
     if (targetClip) {
-      const newAction = mixerRef.current!.clipAction(targetClip);
+      const newAction = mixerRef.current.clipAction(targetClip);
       newAction.reset().fadeIn(0.3).play();
       currentActionRef.current?.fadeOut(0.3);
       currentActionRef.current = newAction;
@@ -164,23 +170,6 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
     onAnimationStart?.(animation);
   }, [animation, onAnimationStart]);
 
-  // Update mixer each frame
-  useEffect(() => {
-    if (!mixerRef.current) return;
-
-    const clock = new THREE.Clock();
-    let frameId: number;
-
-    function tick() {
-      frameId = requestAnimationFrame(tick);
-      const delta = clock.getDelta();
-      mixerRef.current?.update(delta);
-    }
-
-    tick();
-    return () => cancelAnimationFrame(frameId);
-  }, []);
-
   // Fallback procedural humanoid when model fails to load
   if (error) {
     return <ProceduralHumanoid animation={animation} />;
@@ -188,8 +177,7 @@ export default function Avatar({ animation, onAnimationStart }: AvatarProps) {
 
   if (!loaded) {
     return (
-      <group ref={groupRef}>
-        {/* Loading indicator */}
+      <group ref={groupRef} position={[0, -0.5, 0]}>
         <mesh position={[0, 0.5, 0]}>
           <boxGeometry args={[0.3, 0.3, 0.3]} />
           <meshStandardMaterial color="#a855f7" wireframe />
@@ -218,7 +206,6 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
   useEffect(() => {
     if (!groupRef.current) return;
 
-    // Build humanoid parts
     const group = groupRef.current;
     const skinMat = new THREE.MeshStandardMaterial({ color: '#FDB07D', roughness: 0.8 });
     const clothMat = new THREE.MeshStandardMaterial({ color: '#3B82F6', roughness: 0.7 });
@@ -289,12 +276,15 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
     return () => { group.remove(...group.children); };
   }, []);
 
-  // Animation loop
+  // Animation loop — resets time safely when animation prop changes
   useEffect(() => {
     if (!groupRef.current) return;
 
+    // Reset time when animation changes so procedural motions feel fresh
+    animRef.current.time = 0;
+
     const clock = new THREE.Clock();
-    let frameId: number;
+    let frameId = 0;
 
     function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 
@@ -307,8 +297,7 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
       const { torso, head, leftShoulder, rightShoulder, leftHip, rightHip } = partsRef.current;
       if (!torso || !head || !leftShoulder || !rightShoulder || !leftHip || !rightHip) return;
 
-      let chestUp: number;
-      let armSwing: number;
+      const rhs = partsRef.current.rightHand;
 
       switch (animation) {
         case 'idle': {
@@ -361,7 +350,7 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
           break;
         }
         case 'posture': {
-          chestUp = Math.sin(t * 0.5) * 0.02 + 1.18;
+          const chestUp = 1.18 + Math.sin(t * 0.5) * 0.02;
           torso.position.y = lerp(torso.position.y, chestUp, 0.1);
           head.position.y = lerp(head.position.y, 1.6, 0.1);
           leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, -0.15, 0.1);
@@ -389,7 +378,7 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
           break;
         }
         case 'celebrate': {
-          armSwing = Math.sin(t * 4) * 0.3;
+          const armSwing = Math.sin(t * 4) * 0.3;
           leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, -Math.PI * 0.7 + armSwing, 0.15);
           rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, Math.PI * 0.7 + armSwing, 0.15);
           head.rotation.y = Math.sin(t * 2) * 0.3;
@@ -423,8 +412,8 @@ function ProceduralHumanoid({ animation }: { animation: AnimationIntent['animati
           const reachT = (Math.sin(t * 1.5) + 1) / 2;
           rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, -Math.PI * 0.3, reachT * 0.15 + 0.05);
           rightShoulder.rotation.x = lerp(rightShoulder.rotation.x, -Math.PI / 3, reachT * 0.15 + 0.05);
-          if (partsRef.current.rightHand) {
-            (partsRef.current.rightHand as THREE.Mesh).position.z = Math.sin(t * 1.5) * 0.15;
+          if (rhs) {
+            rhs.position.z = Math.sin(t * 1.5) * 0.15;
           }
           torso.rotation.y = lerp(torso.rotation.y, reachT * 0.3, 0.1);
           head.rotation.y = lerp(head.rotation.y, reachT * 0.2, 0.1);
