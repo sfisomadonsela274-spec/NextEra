@@ -111,7 +111,7 @@ export async function generateObjectDescription(prompt: string): Promise<{
   return classifyObjectFallback(prompt);
 }
 
-function classifyObjectFallback(prompt: string): {
+export function classifyObjectFallback(prompt: string): {
   category: string;
   description: string;
   geometry: string;

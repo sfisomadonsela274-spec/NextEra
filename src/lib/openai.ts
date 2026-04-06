@@ -228,6 +228,22 @@ function summariesFallback(prompt: string): string {
   if (/table/.test(lower)) {
     return 'A sturdy flat-surface work station used for assembly, inspection, or training demonstrations. Tables serve as the central anchor point for group training scenarios where learners gather around to observe and practice hands-on skills.';
   }
+  return { animation: 'idle' as AnimationIntent['animation'], confidence: 0.3, explanation: getDesc('idle') };
+}
 
   return `A training asset used in workplace safety and professional skills development modules. This object is commonly featured in NexEra's educational content to support hands-on competency building, hazard recognition training, and practical assessment exercises.`;
 }
+
+const ANIMATION_DESCRIPTIONS: Record<string, string> = {
+  idle: 'Character returns to neutral idle stance',
+  walk: 'Character walks forward to demonstrate movement or approach',
+  wave: 'Character waves to greet someone or acknowledge a presence',
+  point: 'Character points to an object or direction for reference',
+  crouch: 'Character crouches down to demonstrate a low position or hiding',
+  posture: 'Character stands tall in the correct safety posture for workplace training',
+  jump: 'Character jumps to demonstrate agility and quick movement',
+  celebrate: 'Character celebrates to show success or positive reinforcement',
+  look_around: 'Character scans the environment, demonstrating situational awareness',
+  pick_up: 'Character bends and picks up an object with proper lifting technique',
+  open_door: 'Character approaches and opens a door to enter a room',
+};

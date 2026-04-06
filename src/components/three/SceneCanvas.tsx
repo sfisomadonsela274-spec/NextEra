@@ -3,6 +3,7 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stage, AdaptiveDpr, AdaptiveEvents } from '@react-three/drei';
 import { Suspense } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface SceneCanvasProps {
   children: React.ReactNode;
@@ -10,11 +11,57 @@ interface SceneCanvasProps {
   cameraPosition?: [number, number, number];
 }
 
-export default function SceneCanvas({ children, className, cameraPosition = [0, 1.5, 4] }: SceneCanvasProps) {
+const defaultCamera: [number, number, number] = [0, 1.5, 4];
+export default function SceneCanvas({ children, className, cameraPosition = defaultCamera }: SceneCanvasProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 800, height: 600 });
+
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentBoxSize) {
+          // Firefox support
+          const contentBoxSize = entry.contentBoxSize[0];
+          setSize({ width: contentBoxSize.inlineSize, height: contentBoxSize.blockSize });
+        } else {
+          // Standard
+          setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+        }
+      }
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  // Calculate responsive camera position based on container size
+  const getCameraPosition = (): [number, number, number] => {
+    // Use the provided cameraPosition override
+    if (cameraPosition !== defaultCamera) {
+      return cameraPosition;
+    }
+    const aspectRatio = size.width / size.height;
+    const baseDistance = 4;
+
+    let distance = baseDistance;
+    if (aspectRatio > 1.6) {
+      distance = baseDistance * (1 + (aspectRatio - 1.6) * 0.3);
+    } else if (aspectRatio < 0.6) {
+      distance = baseDistance * (1 + (0.6 - aspectRatio) * 0.3);
+    }
+
+    return [0, 1.5, distance];
+  };
+
   return (
-    <div className={className}>
+    <div ref={containerRef} className={className}>
       <Canvas
-        camera={{ position: cameraPosition, fov: 50 }}
+        camera={{ position: getCameraPosition(), fov: 50 }}
         shadows
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false }}

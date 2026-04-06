@@ -99,7 +99,24 @@ function RobotAvatar({ animation, targetPosition, onAnimationStart }: { animatio
     return () => { cancelled = true; clearTimeout(timeout); };
   }, []);
 
-  // Handle animation changes
+  // Single persistent animation frame loop — runs for the lifetime of the component
+  // Works for both GLB model mixer AND procedural humanoid
+  useEffect(() => {
+    const clock = new THREE.Clock();
+
+    function tick() {
+      rafRef.current = requestAnimationFrame(tick);
+      const delta = clock.getDelta();
+      mixerRef.current?.update(delta);
+    }
+
+    tick();
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  // Handle animation changes (GLB model clips)
   useEffect(() => {
     if (!mixerRef.current || !currentActionRef.current) return;
     if (lastActionRef.current.toLowerCase().includes(animation)) return;
@@ -207,6 +224,9 @@ function ProceduralHumanoid({ animation, targetPosition, onAnimationStart }: { a
       group.add(leg); (parts as any)[side] = leg;
     }
 
+    // Reset time when animation changes so procedural motions feel fresh
+    animRef.current.time = 0;
+
     const clock = new THREE.Clock();
     let frameId: number;
     function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
@@ -293,6 +313,79 @@ function ProceduralHumanoid({ animation, targetPosition, onAnimationStart }: { a
           parts.torso.position.y = lerp(parts.torso.position.y, 0.8, 0.15);
           parts.head.position.y = lerp(parts.head.position.y, 1.2, 0.15);
           parts.head.rotation.x = lerp(parts.head.rotation.x, 0.2, 0.1);
+          break;
+        }
+        case 'posture': {
+          const chestUp = 1.18 + Math.sin(t * 0.5) * 0.02;
+          torso.position.y = lerp(torso.position.y, chestUp, 0.1);
+          head.position.y = lerp(head.position.y, 1.6, 0.1);
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, -0.15, 0.1);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, 0.15, 0.1);
+          leftShoulder.rotation.x = lerp(leftShoulder.rotation.x, -0.1, 0.1);
+          rightShoulder.rotation.x = lerp(rightShoulder.rotation.x, -0.1, 0.1);
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
+          head.rotation.x = lerp(head.rotation.x, 0, 0.1);
+          break;
+        }
+        case 'jump': {
+          const phase = (t * 3) % (Math.PI * 2);
+          const jumpHeight = Math.max(0, Math.sin(phase));
+          groupRef.current!.position.y = jumpHeight * 0.3;
+          if (jumpHeight < 0.1) {
+            leftHip.rotation.x = lerp(leftHip.rotation.x, 0.6, 0.1);
+            rightHip.rotation.x = lerp(rightHip.rotation.x, 0.6, 0.1);
+          } else {
+            leftHip.rotation.x = lerp(leftHip.rotation.x, -0.3, 0.1);
+            rightHip.rotation.x = lerp(rightHip.rotation.x, -0.3, 0.1);
+          }
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, jumpHeight > 0.1 ? -Math.PI * 0.6 : 0, 0.15);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, jumpHeight > 0.1 ? Math.PI * 0.6 : 0, 0.15);
+          break;
+        }
+        case 'celebrate': {
+          const armSwing = Math.sin(t * 4) * 0.3;
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, -Math.PI * 0.7 + armSwing, 0.15);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, Math.PI * 0.7 + armSwing, 0.15);
+          head.rotation.y = Math.sin(t * 2) * 0.3;
+          groupRef.current!.position.y = Math.abs(Math.sin(t * 8)) * 0.08;
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
+          break;
+        }
+        case 'look_around': {
+          head.rotation.y = Math.sin(t * 1.2) * 0.8;
+          head.rotation.x = Math.sin(t * 0.6) * 0.15;
+          torso.rotation.y = Math.sin(t * 0.8) * 0.2;
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, 0, 0.1);
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, 0, 0.1);
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
+          break;
+        }
+        case 'pick_up': {
+          const lerpTarget = Math.sin(t * 2) * 0.5;
+          leftHip.rotation.x = lerp(leftHip.rotation.x, lerpTarget * 0.8, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, lerpTarget * 0.8, 0.1);
+          torso.position.y = lerp(torso.position.y, 0.7 + lerpTarget * -0.2, 0.1);
+          head.position.y = lerp(head.position.y, 1.1, 0.1);
+          leftShoulder.rotation.x = lerp(leftShoulder.rotation.x, lerpTarget * 1.5, 0.15);
+          rightShoulder.rotation.x = lerp(rightShoulder.rotation.x, lerpTarget * 1.5, 0.15);
+          groupRef.current!.position.y = lerp(groupRef.current!.position.y, lerpTarget * -0.15, 0.1);
+          break;
+        }
+        case 'open_door': {
+          const reachT = (Math.sin(t * 1.5) + 1) / 2;
+          rightShoulder.rotation.z = lerp(rightShoulder.rotation.z, -Math.PI * 0.3, reachT * 0.15 + 0.05);
+          rightShoulder.rotation.x = lerp(rightShoulder.rotation.x, -Math.PI / 3, reachT * 0.15 + 0.05);
+          if (rhs) {
+            rhs.position.z = Math.sin(t * 1.5) * 0.15;
+          }
+          torso.rotation.y = lerp(torso.rotation.y, reachT * 0.3, 0.1);
+          head.rotation.y = lerp(head.rotation.y, reachT * 0.2, 0.1);
+          leftShoulder.rotation.z = lerp(leftShoulder.rotation.z, 0, 0.1);
+          leftHip.rotation.x = lerp(leftHip.rotation.x, 0, 0.1);
+          rightHip.rotation.x = lerp(rightHip.rotation.x, 0, 0.1);
           break;
         }
       }
