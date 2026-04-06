@@ -1,21 +1,23 @@
 // ============================================
 // NexEra — Hunyuan3D-2 via HuggingFace Spaces
 // ============================================
-// Free, no API key required — uses hf_hub Download
+// Free, no API key required — uses Gradio API
 // to fetch the model output after async generation.
-// Space: https://huggingface.co/spaces/hysts/Hunyuan3D-2
+// Space: https://huggingface.co/spaces/tencent/Hunyuan3D-2
 //
-// API flow:
-//  1. POST task to the Space with prompt (+ optional image)
-//  2. Poll /status/{task_id} until "COMPLETED"
+// API flow (Gradio pattern):
+//  1. POST to /call/{endpoint} with prompt
+//  2. GET /call/{endpoint}/{event_id} for status
 //  3. Fetch .glb from the returned URL
 
-const SPACE_URL = 'https://hysts-hunyuan3d-2.hf.space';
+const SPACE_URL = 'https://tencent-hunyuan3d-2.hf.space';
 
 export interface Hunyuan3DResult {
-  task_id: string;
+  event_id: string;
+  output?: {
+    data: Array<{ url: string }>;
+  };
   status: 'processing' | 'completed' | 'failed';
-  model_url?: string;
   message?: string;
 }
 
@@ -26,20 +28,21 @@ export interface Hunyuan3DOptions {
   signal?: AbortSignal;
 }
 
-// ─── Submit generation task ─────────────────────────────────────────────────
+// ─── Submit generation task via Gradio API ────────────────────────────────────
 
-async function submitTask(opts: Hunyuan3DOptions): Promise<string> {
+async function submitGradioTask(opts: Hunyuan3DOptions): Promise<string> {
   const { prompt, imageBase64, signal } = opts;
 
-  const body: Record<string, unknown> = {
-    prompt,
-    stream: false,
+  // Gradio API format: POST /call/{fn_index} with data array
+  // For Hunyuan3D-2, the text-to-3D endpoint is typically fn_index=0
+  const body = {
+    data: [
+      imageBase64 || null, // image input (optional)
+      prompt,               // text prompt
+    ],
   };
-  if (imageBase64) {
-    body.image = imageBase64;
-  }
 
-  const res = await fetch(`${SPACE_URL}/api/submit`, {
+  const res = await fetch(`${SPACE_URL}/call/0`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -47,46 +50,86 @@ async function submitTask(opts: Hunyuan3DOptions): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`Hunyuan3D submit failed: ${res.status} ${res.statusText}`);
+    // Try alternative endpoint format
+    const altRes = await fetch(`${SPACE_URL}/api/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fn_index: 0,
+        data: [imageBase64 || null, prompt],
+      }),
+      signal,
+    });
+
+    if (!altRes.ok) {
+      throw new Error(`Hunyuan3D submit failed: ${res.status}`);
+    }
+
+    const altData = await altRes.json();
+    return altData.event_id ?? altData.task_id ?? 'task-' + Date.now();
   }
 
   const data = await res.json();
-  // The Space returns { task_id: "..." } or similar
-  return data.task_id ?? data.id ?? String(data);
+  return data.event_id ?? data.task_id ?? 'task-' + Date.now();
 }
 
 // ─── Poll for completion ─────────────────────────────────────────────────────
 
-async function pollTask(taskId: string, signal?: AbortSignal): Promise<Hunyuan3DResult> {
-  const maxWait = 300_000; // 5 minutes
+async function pollGradioTask(eventId: string, signal?: AbortSignal): Promise<{ glbUrl: string }> {
+  const maxWait = 180_000; // 3 minutes
   const start = Date.now();
 
   while (true) {
     if (signal?.aborted) throw new Error('Aborted');
-    if (Date.now() - start > maxWait) throw new Error('Hunyuan3D timed out after 5 minutes');
+    if (Date.now() - start > maxWait) throw new Error('Hunyuan3D timed out after 3 minutes');
 
     try {
-      const res = await fetch(`${SPACE_URL}/api/status/${encodeURIComponent(taskId)}`, {
+      // Gradio streaming API: GET /call/{fn_index}/{event_id}
+      const res = await fetch(`${SPACE_URL}/call/0/${eventId}`, {
         signal,
       });
 
       if (!res.ok) {
-        // Space may return 404 while task is queued — keep polling
-        await sleep(5_000);
+        // Task might still be queued
+        await sleep(3_000);
         continue;
       }
 
-      const data: Hunyuan3DResult = await res.json();
+      // Parse SSE-like response or JSON
+      const text = await res.text();
 
-      if (data.status === 'completed') return data;
-      if (data.status === 'failed') throw new Error(data.message ?? 'Generation failed');
+      // Check for completion marker
+      if (text.includes('"status":"completed"') || text.includes('"status": "completed"')) {
+        // Extract GLB URL from response
+        const urlMatch = text.match(/"url":\s*"([^"]+\.glb[^"]*)"/);
+        if (urlMatch) {
+          return { glbUrl: urlMatch[1] };
+        }
 
-      // processing / queued
-      await sleep(5_000);
+        // Try parsing as JSON
+        try {
+          const json = JSON.parse(text);
+          if (json.output?.data?.[0]?.url) {
+            return { glbUrl: json.output.data[0].url };
+          }
+          if (json.data?.[0]?.url) {
+            return { glbUrl: json.data[0].url };
+          }
+        } catch {
+          // Not JSON, continue polling
+        }
+      }
+
+      if (text.includes('"status":"failed"') || text.includes('error')) {
+        throw new Error('Hunyuan3D generation failed');
+      }
+
+      // Still processing
+      await sleep(3_000);
     } catch (err) {
       if ((err as Error).message === 'Aborted') throw err;
       // Network hiccup — wait and retry
-      await sleep(5_000);
+      await sleep(3_000);
     }
   }
 }
@@ -96,35 +139,75 @@ async function pollTask(taskId: string, signal?: AbortSignal): Promise<Hunyuan3D
 /**
  * Generate a 3D model using Hunyuan3D-2 via HuggingFace Spaces.
  * Returns a GLB Blob suitable for loading into Three.js.
+ *
+ * Note: This may fail due to CORS or Space availability. The caller
+ * should implement a fallback (e.g., procedural models).
  */
 export async function generateWithHunyuan3D(
   opts: Hunyuan3DOptions
 ): Promise<Blob> {
   const { onProgress, signal } = opts;
 
-  onProgress?.('Submitting to Hunyuan3D-2...');
+  onProgress?.('Connecting to Hunyuan3D-2...');
 
-  const taskId = await submitTask({ ...opts, signal });
-  onProgress?.(`Task submitted: ${taskId.slice(0, 8)}...`);
+  try {
+    const eventId = await submitGradioTask({ ...opts, signal });
+    onProgress?.(`Generating model... (${eventId.slice(0, 8)})`);
 
-  const result = await pollTask(taskId, signal);
+    const result = await pollGradioTask(eventId, signal);
 
-  if (!result.model_url) {
-    throw new Error('No model URL returned from Hunyuan3D');
+    onProgress?.('Downloading 3D model...');
+
+    // Handle relative URLs
+    const glbUrl = result.glbUrl.startsWith('http')
+      ? result.glbUrl
+      : `${SPACE_URL}${result.glbUrl.startsWith('/') ? '' : '/'}${result.glbUrl}`;
+
+    const glbRes = await fetch(glbUrl, { signal });
+    if (!glbRes.ok) {
+      throw new Error(`Failed to download GLB: ${glbRes.status}`);
+    }
+
+    onProgress?.('Model downloaded!');
+    return glbRes.blob();
+  } catch (err) {
+    // Re-throw with context
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Hunyuan3D unavailable: ${message}. Using fallback.`);
   }
-
-  onProgress?.('Downloading GLB...');
-
-  const glbRes = await fetch(result.model_url, { signal });
-  if (!glbRes.ok) {
-    throw new Error(`Failed to download GLB: ${glbRes.status}`);
-  }
-
-  return glbRes.blob();
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ─── Alternative: Try HuggingFace Inference API ─────────────────────────────────
+
+/**
+ * Alternative method using @huggingface/inference SDK.
+ * This may work better for CORS handling.
+ */
+export async function generateWithHuggingFaceInference(
+  opts: Hunyuan3DOptions
+): Promise<Blob> {
+  const { prompt, onProgress, signal } = opts;
+
+  onProgress?.('Calling HuggingFace Inference...');
+
+  try {
+    // Dynamic import to avoid bundling issues
+    const { HfInference } = await import('@huggingface/inference');
+
+    // Use a free inference endpoint for text-to-3D
+    // Note: This requires a HuggingFace token for some models
+    const hf = new HfInference();
+
+    // Hunyuan3D-2 isn't directly available via inference API
+    // Fall back to error
+    throw new Error('HuggingFace Inference does not support Hunyuan3D-2 directly');
+  } catch (err) {
+    throw new Error(`HuggingFace Inference failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

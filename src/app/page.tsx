@@ -15,6 +15,10 @@ const AIGeneratedModelViewer = dynamic(() => import('@/components/three/AIGenera
 const PlaceholderModel = dynamic(() => import('@/components/three/PlaceholderModel'), { ssr: false });
 const SceneObjectMarkers = dynamic(() => import('@/components/three/SceneObjectMarkers'), { ssr: false });
 
+// ─── Generation Mode Toggle ────────────────────────────────────────────────────
+
+type GenerationMode = 'ai' | 'procedural';
+
 // ─── Test 1: 3D Generation ────────────────────────────────────────────────────
 
 function Test1Tab() {
@@ -23,6 +27,7 @@ function Test1Tab() {
   const [summary, setSummary] = useState<string | null>(null);
   const [modelKey, setModelKey] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('ai');
 
   const handleGenerate = useCallback(async (p: string, imgUrl?: string) => {
     setIsGenerating(true);
@@ -52,6 +57,7 @@ function Test1Tab() {
               imageUrl={imageUrl}
               onDescriptionGenerated={setSummary}
               onModelReady={() => setIsGenerating(false)}
+              useAI={generationMode === 'ai'}
             />
           ) : (
             <PlaceholderModel />
@@ -66,8 +72,32 @@ function Test1Tab() {
             <h3 className="text-sm font-medium text-[#6b7280] mb-1">Test 1</h3>
             <h2 className="text-lg font-semibold text-white">AI-Generated 3D Asset</h2>
             <p className="text-sm text-[#6b7280] mt-1">
-              Describe a training object — AI generates a procedural 3D model
+              Describe a training object — AI generates a 3D model
             </p>
+          </div>
+
+          {/* Generation Mode Toggle */}
+          <div className="flex items-center gap-2 p-1 bg-[#1a1a28] rounded-lg">
+            <button
+              onClick={() => setGenerationMode('ai')}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                generationMode === 'ai'
+                  ? 'bg-[#a855f7] text-white'
+                  : 'text-[#6b7280] hover:text-white'
+              }`}
+            >
+              AI Model (Hunyuan3D)
+            </button>
+            <button
+              onClick={() => setGenerationMode('procedural')}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                generationMode === 'procedural'
+                  ? 'bg-[#a855f7] text-white'
+                  : 'text-[#6b7280] hover:text-white'
+              }`}
+            >
+              Procedural Fallback
+            </button>
           </div>
 
           <GenerationPanel
@@ -86,6 +116,11 @@ function Test1Tab() {
             <h3 className="text-sm font-medium text-[#a855f7] mb-2">Educational Context</h3>
             <p className="text-sm text-[#9ca3af] leading-relaxed">{summary}</p>
             <p className="text-xs text-[#4b5563] mt-2 italic">Prompt: &quot;{prompt}&quot;</p>
+            <div className="mt-2 flex items-center gap-1">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#22c55e]/10 text-[#22c55e]">
+                {generationMode === 'ai' ? 'AI Generated' : 'Procedural'}
+              </span>
+            </div>
           </div>
         )}
 
@@ -95,7 +130,9 @@ function Test1Tab() {
               <LoadingSpinner size="md" />
               <div>
                 <p className="text-sm font-medium text-white">Generating model...</p>
-                <p className="text-xs text-[#6b7280]">Creating procedural 3D asset</p>
+                <p className="text-xs text-[#6b7280]">
+                  {generationMode === 'ai' ? 'Creating AI-generated 3D asset' : 'Building procedural 3D geometry'}
+                </p>
               </div>
             </div>
           </div>
