@@ -2,8 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import type { AnimationIntent } from '@/types';
-import { mapCommandToAnimation, generateViaAPI } from '@/lib/openai';
+import type { AnimationIntent, SceneObject } from '@/types';
+import { mapCommandToAnimation, generateModelSummary } from '@/lib/openai';
 import CommandInput from '@/components/ui/CommandInput';
 import GenerationPanel from '@/components/ui/GenerationPanel';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -11,22 +11,28 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 // Dynamically import Three.js components (no SSR)
 const SceneCanvas = dynamic(() => import('@/components/three/SceneCanvas'), { ssr: false });
 const Avatar = dynamic(() => import('@/components/three/Avatar'), { ssr: false });
-const ProceduralModelViewer = dynamic(() => import('@/components/three/ProceduralModelViewer'), { ssr: false });
+const AIGeneratedModelViewer = dynamic(() => import('@/components/three/AIGeneratedModelViewer'), { ssr: false });
 const PlaceholderModel = dynamic(() => import('@/components/three/PlaceholderModel'), { ssr: false });
+const SceneObjectMarkers = dynamic(() => import('@/components/three/SceneObjectMarkers'), { ssr: false });
+
+// ─── Generation Mode Toggle ────────────────────────────────────────────────────
+
+type GenerationMode = 'ai' | 'procedural';
 
 // ─── Test 1: 3D Generation ────────────────────────────────────────────────────
 
 function Test1Tab() {
   const [prompt, setPrompt] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | undefined>();
   const [summary, setSummary] = useState<string | null>(null);
   const [modelKey, setModelKey] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [generatedGroup, setGeneratedGroup] = useState<object | null>(null);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('ai');
 
-  const handleGenerate = useCallback(async (p: string, imageUrl?: string) => {
+  const handleGenerate = useCallback(async (p: string, imgUrl?: string) => {
     setIsGenerating(true);
     setPrompt(p);
+    setImageUrl(imgUrl);
     setSummary(null);
     setProgress(0);
     setGeneratedGroup(null);
@@ -37,42 +43,64 @@ function Test1Tab() {
       setGeneratedGroup((result.model as any).geometry ?? null);
       setModelKey(k => k + 1);
     } finally {
-      setIsGenerating(false);
-      setProgress(100);
+      // Don't reset isGenerating — viewer manages its own loading state
+      // and calls onModelReady to release the spinner
     }
   }, []);
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 w-full h-full">
       {/* 3D Viewer */}
-      <div className="flex-1 min-h-[300px] lg:min-h-0 rounded-2xl overflow-hidden glass border-white/20">
-        <div className="w-full h-full min-h-[300px] lg:min-h-[420px] bg-gradient-to-br from-slate-900/5 to-slate-900/20 rounded-2xl overflow-hidden">
-          <SceneCanvas className="w-full h-full min-h-[300px] lg:min-h-[420px]">
-            {prompt ? (
-              <ProceduralModelViewer
-                key={modelKey}
-                prompt={prompt}
-                onModelGenerated={async (data) => {
-                  setGeneratedGroup((data as any).geometry ?? null);
-                }}
-                onDescriptionGenerated={setSummary}
-              />
-            ) : (
-              <PlaceholderModel />
-            )}
-          </SceneCanvas>
-        </div>
+      <div className="flex-1 min-h-[300px] lg:min-h-0 rounded-2xl overflow-hidden bg-[#0a0a14] border border-[#2a2a3a]">
+        <SceneCanvas className="w-full h-full min-h-[300px] lg:min-h-[420px]">
+          {prompt ? (
+            <AIGeneratedModelViewer
+              key={modelKey}
+              prompt={prompt}
+              imageUrl={imageUrl}
+              onDescriptionGenerated={setSummary}
+              onModelReady={() => setIsGenerating(false)}
+              useAI={generationMode === 'ai'}
+            />
+          ) : (
+            <PlaceholderModel />
+          )}
+        </SceneCanvas>
       </div>
 
       {/* Panel */}
       <div className="lg:w-[360px] flex flex-col gap-4">
         <div className="glass rounded-2xl p-5 flex flex-col gap-4">
           <div>
-            <h3 className="text-sm font-medium text-slate-400 mb-1">Test 1</h3>
-            <h2 className="text-lg font-semibold text-slate-800">AI-Generated 3D Asset</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Describe a training object — or upload an image — AI generates a procedural 3D model
+            <h3 className="text-sm font-medium text-[#6b7280] mb-1">Test 1</h3>
+            <h2 className="text-lg font-semibold text-white">AI-Generated 3D Asset</h2>
+            <p className="text-sm text-[#6b7280] mt-1">
+              Describe a training object — AI generates a 3D model
             </p>
+          </div>
+
+          {/* Generation Mode Toggle */}
+          <div className="flex items-center gap-2 p-1 bg-[#1a1a28] rounded-lg">
+            <button
+              onClick={() => setGenerationMode('ai')}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                generationMode === 'ai'
+                  ? 'bg-[#a855f7] text-white'
+                  : 'text-[#6b7280] hover:text-white'
+              }`}
+            >
+              AI Model (Hunyuan3D)
+            </button>
+            <button
+              onClick={() => setGenerationMode('procedural')}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                generationMode === 'procedural'
+                  ? 'bg-[#a855f7] text-white'
+                  : 'text-[#6b7280] hover:text-white'
+              }`}
+            >
+              Procedural Fallback
+            </button>
           </div>
 
           <GenerationPanel
@@ -87,10 +115,15 @@ function Test1Tab() {
         </div>
 
         {summary && (
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-sm font-medium text-violet-600 mb-2">Educational Context</h3>
-            <p className="text-sm text-slate-600 leading-relaxed">{summary}</p>
-            <p className="text-xs text-slate-400 mt-2 italic">Prompt: &quot;{prompt}&quot;</p>
+          <div className="bg-[#12121c] border border-[#2a2a3a] rounded-2xl p-5">
+            <h3 className="text-sm font-medium text-[#a855f7] mb-2">Educational Context</h3>
+            <p className="text-sm text-[#9ca3af] leading-relaxed">{summary}</p>
+            <p className="text-xs text-[#4b5563] mt-2 italic">Prompt: &quot;{prompt}&quot;</p>
+            <div className="mt-2 flex items-center gap-1">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#22c55e]/10 text-[#22c55e]">
+                {generationMode === 'ai' ? 'AI Generated' : 'Procedural'}
+              </span>
+            </div>
           </div>
         )}
 
@@ -99,8 +132,10 @@ function Test1Tab() {
             <div className="flex items-center gap-3">
               <LoadingSpinner size="md" />
               <div>
-                <p className="text-sm font-medium text-slate-700">Generating model...</p>
-                <p className="text-xs text-slate-400">Creating procedural 3D asset</p>
+                <p className="text-sm font-medium text-white">Generating model...</p>
+                <p className="text-xs text-[#6b7280]">
+                  {generationMode === 'ai' ? 'Creating AI-generated 3D asset' : 'Building procedural 3D geometry'}
+                </p>
               </div>
             </div>
           </div>
@@ -112,30 +147,36 @@ function Test1Tab() {
 
 // ─── Test 2: Avatar Animation ──────────────────────────────────────────────────
 
-const AVATAR_COMMANDS = [
-  'wave hello', 'walk forward', 'point at target', 'crouch down',
-  'show correct safety posture', 'jump up', 'celebrate', 'look around',
-  'pick up the object', 'open the door', 'stop',
-] as const;
+// Scene objects for targeting demo
+const SCENE_OBJECTS: SceneObject[] = [
+  { id: 'fire_extinguisher', label: 'Fire Extinguisher', position: [1.5, 0.8, -0.5], type: 'safety' },
+  { id: 'first_aid_kit', label: 'First Aid Kit', position: [-1.2, 0.5, 0.5], type: 'medical' },
+  { id: 'hard_hat', label: 'Hard Hat', position: [0.8, 1.2, 0.8], type: 'safety' },
+  { id: 'wrench', label: 'Wrench', position: [-0.5, 0.3, -1.0], type: 'tool' },
+  { id: 'table', label: 'Table', position: [2.0, 0, 0], type: 'furniture' },
+];
 
 function Test2Tab() {
   const [animation, setAnimation] = useState<AnimationIntent['animation']>('idle');
   const [explanation, setExplanation] = useState<string | null>(null);
-  const [log, setLog] = useState<Array<{ cmd: string; anim: string; time: string }>>([]);
+  const [log, setLog] = useState<Array<{ cmd: string; anim: string; time: string; target?: string }>>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [avatarTarget, setAvatarTarget] = useState<[number, number, number] | undefined>();
 
   const handleCommand = useCallback(async (cmd: string) => {
     setIsProcessing(true);
     try {
-      const result = await mapCommandToAnimation(cmd);
+      const result = await mapCommandToAnimation(cmd, SCENE_OBJECTS);
       if (result.intent) {
         setAnimation(result.intent.animation);
         setExplanation(result.intent.explanation);
+        setAvatarTarget(result.intent.targetPosition);
         setLog(prev => [
           {
             cmd,
             anim: result.intent!.animation,
             time: new Date().toLocaleTimeString(),
+            target: result.intent!.targetLabel,
           },
           ...prev.slice(0, 9),
         ]);
@@ -148,12 +189,10 @@ function Test2Tab() {
   return (
     <div className="flex flex-col lg:flex-row gap-6 w-full h-full">
       {/* Avatar Viewer */}
-      <div className="flex-1 min-h-[300px] lg:min-h-0 rounded-2xl overflow-hidden glass border-white/20">
-        <div className="w-full h-full min-h-[300px] lg:min-h-[420px] bg-gradient-to-br from-slate-900/5 to-slate-900/20 rounded-2xl overflow-hidden">
-          <SceneCanvas className="w-full h-full min-h-[300px] lg:min-h-[420px]">
-            <Avatar animation={animation} />
-          </SceneCanvas>
-        </div>
+      <div className="flex-1 min-h-[300px] lg:min-h-0 rounded-2xl overflow-hidden bg-[#0a0a14] border border-[#2a2a3a]">
+        <SceneCanvas className="w-full h-full min-h-[300px] lg:min-h-[420px]">
+          <Avatar animation={animation} targetPosition={avatarTarget} />
+        </SceneCanvas>
       </div>
 
       {/* Command Panel */}
@@ -198,9 +237,16 @@ function Test2Tab() {
                     <span className="text-xs text-slate-400">{entry.time}</span>
                     <span className="text-sm text-slate-700">&quot;{entry.cmd}&quot;</span>
                   </div>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-600 font-medium">
-                    {entry.anim.replace('_', ' ')}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {entry.target && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[#22c55e]/10 text-[#22c55e]">
+                        → {entry.target}
+                      </span>
+                    )}
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#a855f7]/10 text-[#a855f7] font-medium">
+                      {entry.anim}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
