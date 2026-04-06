@@ -2,7 +2,7 @@
 
 Interactive prototypes demonstrating AI-powered 3D learning tools and AI-driven avatar animation for human training scenarios.
 
-**Live Demo**: [https://nextera-rouge.vercel.app/]
+**Live Demo**: [[https://nextera-rouge.vercel.app/](https://nextera-75kyvvm9y-sfisomadonsela274-5737s-projects.vercel.app/)]
 
 ## Features
 
